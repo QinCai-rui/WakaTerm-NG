@@ -36,22 +36,9 @@ class TerminalTracker:
                 return
     
     def get_project_name(self, cwd: str) -> str:
-        """Determine project name from current directory"""
+        """Determine project name from current directory (just the last directory name)"""
         path = Path(cwd)
-        
-        # Check for common project indicators
-        project_files = ['.git', 'package.json', 'Cargo.toml', 'setup.py', 
-                        'pyproject.toml', 'go.mod', 'composer.json', '.project']
-        
-        current = path
-        while current != current.parent:
-            for project_file in project_files:
-                if (current / project_file).exists():
-                    return current.name
-            current = current.parent
-        
-        # Fallback to directory name
-        return path.name if path.name else 'terminal'
+        return path.name if path.name else 'root'
     
     def get_language_from_command(self, command: str) -> str:
         """Determine language/category from command"""
@@ -62,6 +49,7 @@ class TerminalTracker:
         cmd = cmd_parts[0]
         
         # Language mappings
+        # TODO: Expand this mapping 
         language_map = {
             'python': 'Python',
             'python3': 'Python',
@@ -106,67 +94,21 @@ class TerminalTracker:
         
         return language_map.get(cmd, 'Shell')
     
-    def get_category_from_command(self, command: str) -> str:
-        """Determine wakatime category from command"""
+    
+    def get_base_command(self, command: str) -> str:
+        """Extract the base command from a full command line"""
         cmd_parts = command.strip().split()
         if not cmd_parts:
-            return 'debugging'
-        
-        cmd = cmd_parts[0]
-        
-        # Category mappings based on wakatime-cli supported categories
-        category_map = {
-            # Development tools
-            'git': 'coding',
-            'vim': 'coding',
-            'nvim': 'coding',
-            'emacs': 'coding',
-            'code': 'coding',
-            'nano': 'coding',
-            
-            # Build tools
-            'make': 'building',
-            'cmake': 'building',
-            'cargo': 'building',
-            'npm': 'building',
-            'yarn': 'building',
-            'gradle': 'building',
-            'mvn': 'building',
-            
-            # Testing
-            'pytest': 'running tests',
-            'jest': 'running tests',
-            'mocha': 'running tests',
-            'phpunit': 'running tests',
-            'rspec': 'running tests',
-            
-            # Debugging
-            'gdb': 'debugging',
-            'lldb': 'debugging',
-            'pdb': 'debugging',
-            'node': 'debugging',  # when used for debugging
-            
-            # Research/Learning
-            'man': 'learning',
-            'help': 'learning',
-            'info': 'learning',
-            
-            # Communication
-            'curl': 'communicating',
-            'wget': 'communicating',
-            'ssh': 'communicating',
-            'scp': 'communicating',
-            'rsync': 'communicating',
-        }
-        
-        return category_map.get(cmd, 'debugging')  # Default to debugging for terminal usage
+            return 'unknown'
+        return cmd_parts[0]
     
     def create_entity_name(self, command: str, cwd: str) -> str:
         """Create a pseudo-entity name for the command"""
-        # Create a unique but consistent entity name
+        # Include the base command in the entity name for better tracking
+        base_cmd = self.get_base_command(command)
         cmd_hash = hashlib.md5(command.encode()).hexdigest()[:8]
         cwd_safe = cwd.replace('/', '_').replace(' ', '_')
-        return f"terminal://{cwd_safe}#{cmd_hash}"
+        return f"terminal://{cwd_safe}/{base_cmd}#{cmd_hash}"
     
     def track_command(self, command: str, cwd: Optional[str] = None, timestamp: Optional[float] = None):
         """Main method to track a command using wakatime-cli"""
@@ -179,6 +121,9 @@ class TerminalTracker:
         # Create arguments for wakatime-cli
         args = [self.wakatime_cli]
         
+        # Get base command for tracking
+        base_cmd = self.get_base_command(command)
+        
         # Add entity (the "file" we're tracking)
         entity = self.create_entity_name(command, cwd)
         args.extend(['--entity', entity])
@@ -186,17 +131,14 @@ class TerminalTracker:
         # Set entity type to app (since we're tracking terminal commands, not files)
         args.extend(['--entity-type', 'app'])
         
-        # Set project name
+        # Set project name (use base command as alternate project to ensure it's tracked)
         project = self.get_project_name(cwd)
         args.extend(['--project', project])
+        args.extend(['--alternate-project', f"terminal-{base_cmd}"])
         
         # Set language
         language = self.get_language_from_command(command)
         args.extend(['--language', language])
-        
-        # Set category
-        category = self.get_category_from_command(command)
-        args.extend(['--category', category])
         
         # Set timestamp
         args.extend(['--time', str(timestamp)])
