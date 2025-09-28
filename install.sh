@@ -167,6 +167,7 @@ install_wakaterm() {
     mkdir -p "$INSTALL_DIR/shells"
     
     # Copy files
+    # TODO: use `install' command (if available) for better permissions
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     
     if [[ -f "$script_dir/wakaterm.py" ]]; then
