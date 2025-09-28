@@ -17,7 +17,7 @@ WAKATIME_CONFIG="$HOME/.wakatime.cfg"
 
 # Functions
 log() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    echo -e "\n${BLUE}[INFO]${NC} $1"
 }
 
 warn() {
@@ -60,7 +60,7 @@ check_dependencies() {
         warn "Or download from: https://github.com/wakatime/wakatime-cli/releases"
         read -p "Continue anyway? (y/N): " -n 1 -r
         echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then # if not yes, then
             exit 1
         fi
     else
