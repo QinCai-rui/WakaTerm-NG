@@ -18,13 +18,16 @@ wakaterm_track() {
     local cwd="$PWD"
     local timestamp=$(date +%s.%3N)
     
-    # Skip empty commands and wakaterm itself
-    if [[ -z "$command" || "$command" =~ ^wakaterm ]]; then
+    # Skip empty commands, wakaterm itself, and source commands to avoid infinite loops
+    if [[ -z "$command" || "$command" =~ ^wakaterm || "$command" =~ ^source.*wakaterm ]]; then
         return 0
     fi
     
-    # Run in background to avoid blocking the shell
-    (python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" "$command" &) 2>/dev/null
+    # Run in background with proper detachment to avoid blocking the shell
+    {
+        python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" "$command" >/dev/null 2>&1 &
+        disown
+    } 2>/dev/null
 }
 
 # Hook into bash command execution
@@ -38,6 +41,11 @@ if [[ -n "$BASH_VERSION" ]]; then
         
         # Get the last command from history
         local last_command=$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
+        
+        # Skip tracking prompt command and history commands to avoid loops
+        if [[ "$last_command" =~ wakaterm_prompt_command || "$last_command" =~ ^history ]]; then
+            return $exit_code
+        fi
         
         # Track the command
         if [[ -n "$last_command" && "$last_command" != "$WAKATERM_LAST_COMMAND" ]]; then
