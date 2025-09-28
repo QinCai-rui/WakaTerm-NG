@@ -131,10 +131,9 @@ class TerminalTracker:
         # Set entity type to app (since we're tracking terminal commands, not files)
         args.extend(['--entity-type', 'app'])
         
-        # Set project name (use base command as alternate project to ensure it's tracked)
+        # Set project name
         project = self.get_project_name(cwd)
         args.extend(['--project', project])
-        args.extend(['--alternate-project', f"terminal-{base_cmd}"])
         
         # Set language
         language = self.get_language_from_command(command)
