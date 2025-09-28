@@ -153,16 +153,13 @@ class TerminalTracker:
         # wakatime-cli will handle all config, caching, and API communication
         
         try:
-            # Run wakatime-cli in background
-            subprocess.run(
+            # Run wakatime-cli in background without waiting for it to finish
+            subprocess.Popen(
                 args,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=10  # Don't block terminal for too long
+                start_new_session=True  # Detach from parent process completely
             )
-        except subprocess.TimeoutExpired:
-            # If wakatime-cli takes too long, just continue
-            pass
         except Exception as e:
             # If there's any error, log it but don't break terminal
             print(f"Warning: Failed to track command with wakatime-cli: {e}", file=sys.stderr)
