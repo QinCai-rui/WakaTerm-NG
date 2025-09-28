@@ -29,11 +29,19 @@ wakaterm_track() {
 
 # Hook into zsh command execution using preexec
 if [[ -n "$ZSH_VERSION" ]]; then
-    # Store the original preexec functions if they exist
-    if [[ -n "$preexec_functions" ]]; then
-        WAKATERM_ORIGINAL_PREEXEC=("${preexec_functions[@]}")
-    else
-        WAKATERM_ORIGINAL_PREEXEC=()
+    # Check if wakaterm is already loaded to prevent double-loading
+    if [[ " ${preexec_functions[*]} " =~ " wakaterm_preexec " ]]; then
+        echo "Warning: wakaterm zsh integration already loaded, skipping..." >&2
+        return 0
+    fi
+    
+    # Store the original preexec functions if they exist (only if we haven't stored them before)
+    if [[ -z "$WAKATERM_ORIGINAL_PREEXEC" ]]; then
+        if [[ -n "$preexec_functions" ]]; then
+            WAKATERM_ORIGINAL_PREEXEC=("${preexec_functions[@]}")
+        else
+            WAKATERM_ORIGINAL_PREEXEC=()
+        fi
     fi
     
     # Function to handle command tracking
@@ -48,9 +56,9 @@ if [[ -n "$ZSH_VERSION" ]]; then
     autoload -U add-zsh-hook
     add-zsh-hook preexec wakaterm_preexec
     
-    # Restore original preexec functions
+    # Restore original preexec functions (but avoid adding wakaterm_preexec again)
     for func in "${WAKATERM_ORIGINAL_PREEXEC[@]}"; do
-        if [[ "$func" != "wakaterm_preexec" ]]; then
+        if [[ "$func" != "wakaterm_preexec" && ! " ${preexec_functions[*]} " =~ " $func " ]]; then
             add-zsh-hook preexec "$func"
         fi
     done

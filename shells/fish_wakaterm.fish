@@ -11,7 +11,7 @@ if not test -f "$wakaterm_python"
     exit 1
 end
 
-# Function to send command to wakatime
+# Function to send command to wakatime (using Python script)
 function wakaterm_track
     set -l command "$argv[1]"
     set -l cwd (pwd)
@@ -22,15 +22,23 @@ function wakaterm_track
         return 0
     end
     
-    # Run in background to avoid blocking the shell
+    # Run Python script in background to avoid blocking the shell
     python3 "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" $command &
+    disown
 end
 
 # Hook into fish command execution
-function wakaterm_postexec --on-event fish_postexec
-    # Get the command from the event
-    set -l command "$argv[1]"
+# Check if wakaterm is already loaded to prevent double-loading
+if not set -q WAKATERM_FISH_LOADED
+    set -g WAKATERM_FISH_LOADED 1
     
-    # Track the command
-    wakaterm_track "$command"
+    function wakaterm_postexec --on-event fish_postexec
+        # Get the command from the event
+        set -l command "$argv[1]"
+        
+        # Track the command
+        wakaterm_track "$command"
+    end
+else
+    echo "Warning: wakaterm fish integration already loaded, skipping..." >&2
 end

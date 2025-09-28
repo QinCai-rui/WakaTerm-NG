@@ -12,7 +12,7 @@ if [[ ! -f "$WAKATERM_PYTHON" ]]; then
     return 1
 fi
 
-# Function to send command to wakatime
+# Function to send command to wakatime (using Python script)
 wakaterm_track() {
     local command="$1"
     local cwd="$PWD"
@@ -23,7 +23,7 @@ wakaterm_track() {
         return 0
     fi
     
-    # Run in background with proper detachment to avoid blocking the shell
+    # Run Python script in background with proper detachment to avoid blocking the shell
     {
         python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" "$command" >/dev/null 2>&1 &
         disown
@@ -32,8 +32,16 @@ wakaterm_track() {
 
 # Hook into bash command execution
 if [[ -n "$BASH_VERSION" ]]; then
-    # Store the original PROMPT_COMMAND
-    WAKATERM_ORIGINAL_PROMPT_COMMAND="$PROMPT_COMMAND"
+    # Check if wakaterm is already loaded to prevent double-loading
+    if [[ "$PROMPT_COMMAND" =~ wakaterm_prompt_command ]]; then
+        echo "Warning: wakaterm bash integration already loaded, skipping..." >&2
+        return 0
+    fi
+    
+    # Store the original PROMPT_COMMAND (only if we haven't stored it before)
+    if [[ -z "$WAKATERM_ORIGINAL_PROMPT_COMMAND" ]]; then
+        WAKATERM_ORIGINAL_PROMPT_COMMAND="$PROMPT_COMMAND"
+    fi
     
     # Function to handle command tracking
     wakaterm_prompt_command() {
@@ -53,8 +61,8 @@ if [[ -n "$BASH_VERSION" ]]; then
             WAKATERM_LAST_COMMAND="$last_command"
         fi
         
-        # Execute original PROMPT_COMMAND if it exists
-        if [[ -n "$WAKATERM_ORIGINAL_PROMPT_COMMAND" ]]; then
+        # Execute original PROMPT_COMMAND if it exists and it's not our own function
+        if [[ -n "$WAKATERM_ORIGINAL_PROMPT_COMMAND" && "$WAKATERM_ORIGINAL_PROMPT_COMMAND" != "wakaterm_prompt_command" ]]; then
             eval "$WAKATERM_ORIGINAL_PROMPT_COMMAND"
         fi
         
