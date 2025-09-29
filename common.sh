@@ -214,5 +214,6 @@ main() {
     esac
 }
 
-# Run main function with all arguments
+# Load required modules for the action, then run main function
+load_modules_for_action "$1"
 main "$@"
