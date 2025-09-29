@@ -15,6 +15,7 @@ fi
 # Function to send command to wakatime (using Python script)
 wakaterm_track() {
     local command="$1"
+    local duration="$2"
     local cwd="$PWD"
     local timestamp=$(date +%s.%3N)
     
@@ -25,7 +26,7 @@ wakaterm_track() {
     
     # Run Python script in background with proper detachment to avoid blocking the shell
     {
-        python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" "$command" >/dev/null 2>&1 &
+        python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" "$command" >/dev/null 2>&1 &
         disown
     } 2>/dev/null
 }
@@ -43,22 +44,45 @@ if [[ -n "$BASH_VERSION" ]]; then
         WAKATERM_ORIGINAL_PROMPT_COMMAND="$PROMPT_COMMAND"
     fi
     
+    # Variables to track command timing
+    WAKATERM_COMMAND_START_TIME=""
+    WAKATERM_CURRENT_COMMAND=""
+    WAKATERM_LAST_COMMAND=""
+    
+    # DEBUG trap to capture command start time
+    wakaterm_debug_trap() {
+        # Only capture timing for actual commands (not during completion, etc.)
+        if [[ "$BASH_COMMAND" != "wakaterm_prompt_command" && 
+              "$BASH_COMMAND" != *"wakaterm"* && 
+              "$BASH_COMMAND" != *"PROMPT_COMMAND"* &&
+              "$BASH_COMMAND" != *"history"* ]]; then
+            WAKATERM_COMMAND_START_TIME=$(date +%s.%3N)
+            WAKATERM_CURRENT_COMMAND="$BASH_COMMAND"
+        fi
+    }
+    
     # Function to handle command tracking
     wakaterm_prompt_command() {
         local exit_code=$?
         
-        # Get the last command from history
-        local last_command=$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
-        
-        # Skip tracking prompt command and history commands to avoid loops
-        if [[ "$last_command" =~ wakaterm_prompt_command || "$last_command" =~ ^history ]]; then
-            return $exit_code
-        fi
-        
-        # Track the command
-        if [[ -n "$last_command" && "$last_command" != "$WAKATERM_LAST_COMMAND" ]]; then
-            wakaterm_track "$last_command"
-            WAKATERM_LAST_COMMAND="$last_command"
+        # Calculate duration if we have a start time
+        if [[ -n "$WAKATERM_COMMAND_START_TIME" && -n "$WAKATERM_CURRENT_COMMAND" ]]; then
+            local end_time=$(date +%s.%3N)
+            local duration=$(echo "$end_time - $WAKATERM_COMMAND_START_TIME" | bc -l 2>/dev/null || echo "2.0")
+            
+            # Ensure duration is at least 0.1 seconds and reasonable (max 1 hour)
+            if (( $(echo "$duration < 0.1" | bc -l 2>/dev/null || echo "0") )); then
+                duration="0.1"
+            elif (( $(echo "$duration > 3600" | bc -l 2>/dev/null || echo "0") )); then
+                duration="3600"
+            fi
+            
+            # Track the command with real duration
+            wakaterm_track "$WAKATERM_CURRENT_COMMAND" "$duration"
+            
+            # Reset timing variables
+            WAKATERM_COMMAND_START_TIME=""
+            WAKATERM_CURRENT_COMMAND=""
         fi
         
         # Execute original PROMPT_COMMAND if it exists and it's not our own function
@@ -69,9 +93,7 @@ if [[ -n "$BASH_VERSION" ]]; then
         return $exit_code
     }
     
-    # Set our prompt command
+    # Set up the DEBUG trap and PROMPT_COMMAND
+    trap 'wakaterm_debug_trap' DEBUG
     PROMPT_COMMAND="wakaterm_prompt_command"
-    
-    # init
-    WAKATERM_LAST_COMMAND=""
 fi

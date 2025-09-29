@@ -123,7 +123,7 @@ class TerminalTracker:
             return 'unknown'
         return cmd_parts[0]
     
-    def create_activity_entry(self, command: str, cwd: str, timestamp: float) -> Dict:
+    def create_activity_entry(self, command: str, cwd: str, timestamp: float, duration: float = 2.0) -> Dict:
         """Create an activity log entry"""
         base_cmd = self.get_base_command(command)
         project = self.get_project_name(cwd)
@@ -141,21 +141,22 @@ class TerminalTracker:
             "project": project,
             "language": language,
             "entity": f"terminal://{project}/{base_cmd}#{entity_hash}",
-            "duration": 2.0,  # Default 2 seconds per command
+            "duration": duration,
             "plugin": "wakaterm-ng/2.0.0"
         }
     
-    def track_command(self, command: str, cwd: Optional[str] = None, timestamp: Optional[float] = None):
+    def track_command(self, command: str, cwd: Optional[str] = None, timestamp: Optional[float] = None, duration: Optional[float] = None):
         """Main method to track a command by logging to local file"""
         if not command.strip():
             return
         
         cwd = cwd or os.getcwd()
         timestamp = timestamp or time.time()
+        duration = duration or 2.0  # Default fallback to 2 seconds
         
         try:
             # Create activity entry
-            entry = self.create_activity_entry(command, cwd, timestamp)
+            entry = self.create_activity_entry(command, cwd, timestamp, duration)
             
             # Append to log file (JSON Lines format)
             with open(self.log_file, 'a', encoding='utf-8') as f:
@@ -182,6 +183,7 @@ def main():
     parser.add_argument('command', nargs='*', help='Command to track')
     parser.add_argument('--cwd', help='Current working directory')
     parser.add_argument('--timestamp', type=float, help='Command timestamp')
+    parser.add_argument('--duration', type=float, help='Command execution duration in seconds')
     parser.add_argument('--log-dir', help='Directory to store log files')
     parser.add_argument('--cleanup', action='store_true', help='Cleanup old log files')
     parser.add_argument('--days-to-keep', type=int, default=30, help='Days of logs to keep (default: 30)')
@@ -200,7 +202,7 @@ def main():
         sys.exit(1)
     
     command = ' '.join(args.command)
-    tracker.track_command(command, args.cwd, args.timestamp)
+    tracker.track_command(command, args.cwd, args.timestamp, args.duration)
 
 
 if __name__ == '__main__':
