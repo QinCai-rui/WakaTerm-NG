@@ -24,6 +24,11 @@ wakaterm_track() {
         return 0
     fi
     
+    # Optional debug mode - set WAKATERM_DEBUG=1 to see what's being tracked
+    if [[ "$WAKATERM_DEBUG" == "1" ]]; then
+        echo "WAKATERM: Tracking command: $command (duration: ${duration}s)" >&2
+    fi
+    
     # Run Python script in background with proper detachment to avoid blocking the shell
     {
         python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" "$command" >/dev/null 2>&1 &
@@ -51,13 +56,17 @@ if [[ -n "$BASH_VERSION" ]]; then
     
     # DEBUG trap to capture command start time
     wakaterm_debug_trap() {
-        # Only capture timing for actual commands (not during completion, etc.)
+        # Only skip our internal functions and direct Python wakaterm calls to prevent infinite loops
+        # Be much more permissive to track nearly all commands
         if [[ "$BASH_COMMAND" != "wakaterm_prompt_command" && 
-              "$BASH_COMMAND" != *"wakaterm"* && 
-              "$BASH_COMMAND" != *"PROMPT_COMMAND"* &&
-              "$BASH_COMMAND" != *"history"* ]]; then
+              "$BASH_COMMAND" != "wakaterm_track"* && 
+              "$BASH_COMMAND" != *"python.*wakaterm.py"* ]]; then
             WAKATERM_COMMAND_START_TIME=$(date +%s.%3N)
             WAKATERM_CURRENT_COMMAND="$BASH_COMMAND"
+            
+            if [[ "$WAKATERM_DEBUG" == "1" ]]; then
+                echo "WAKATERM DEBUG: Captured command: $BASH_COMMAND" >&2
+            fi
         fi
     }
     

@@ -24,6 +24,11 @@ wakaterm_track() {
         return 0
     fi
     
+    # Optional debug mode - set WAKATERM_DEBUG=1 to see what's being tracked
+    if [[ "$WAKATERM_DEBUG" == "1" ]]; then
+        echo "WAKATERM: Tracking command: $command (duration: ${duration}s)" >&2
+    fi
+    
     # Run in background to avoid blocking the shell
     (python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" "$command" &) 2>/dev/null
 }
@@ -61,8 +66,13 @@ if [[ -n "$ZSH_VERSION" ]]; then
     # Function to capture command start time
     wakaterm_preexec() {
         local command="$1"
+        # Don't filter commands here - let wakaterm_track handle filtering
         WAKATERM_CURRENT_COMMAND="$command"
         WAKATERM_COMMAND_START_TIME=$(date +%s.%3N)
+        
+        if [[ "$WAKATERM_DEBUG" == "1" ]]; then
+            echo "WAKATERM DEBUG: Preexec captured: $command" >&2
+        fi
     }
     
     # Function to track command completion with duration
