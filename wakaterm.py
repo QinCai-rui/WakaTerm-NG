@@ -274,7 +274,7 @@ def main():
     args = parser.parse_args()
     
     # Check for debug mode from environment variable as well
-    debug_mode = args.debug or os.environ.get('WAKATERM_DEBUG') == '1'
+    debug_mode = args.debug or os.environ.get('WAKATERM_DEBUG') == 1
     
     tracker = TerminalTracker(args.log_dir)
     
