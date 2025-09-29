@@ -217,7 +217,7 @@ class TerminalTracker:
             "language": language,
             "entity": f"terminal://{project}/{base_cmd}#{entity_hash}",
             "duration": duration,
-            "plugin": "wakaterm-ng/1.0.1"
+            "plugin": "wakaterm-ng/1.0.2"
         }
     
     def track_command(self, command: str, cwd: Optional[str] = None, timestamp: Optional[float] = None, duration: Optional[float] = None, debug: bool = False):
