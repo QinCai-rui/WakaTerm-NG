@@ -32,11 +32,11 @@ class TerminalTracker:
                 fallback_dir.mkdir(parents=True, exist_ok=True)
                 self.log_dir = fallback_dir
                 # Write a warning to stderr ONLY if in debug mode
-                if os.getenv('WAKATERM_DEBUG') == '1':
+                if os.getenv('WAKATERM_DEBUG') == 1:
                     print(f"Warning: Could not create {log_dir or '~/.local/share/wakaterm-logs'}, using {fallback_dir}", file=sys.stderr)
             except Exception:
                 # If even temp directory fails, can't log anything
-                if os.getenv('WAKATERM_DEBUG') == '1':
+                if os.getenv('WAKATERM_DEBUG') == 1:
                     print(f"Error: Could not create any log directory. Original error: {e}", file=sys.stderr)
                 raise
         
