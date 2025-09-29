@@ -23,8 +23,10 @@ function wakaterm_track
         return 0
     end
     
-    # Debug: uncomment the next line to see what commands are being tracked
-    # echo "Tracking: $command (duration: $duration)" >&2
+    # Optional debug mode - set WAKATERM_DEBUG=1 to see what's being tracked
+    if test "$WAKATERM_DEBUG" = "1"
+        echo "WAKATERM: Tracking command: $command (duration: ${duration}s)" >&2
+    end
     
     # Run Python script in background to avoid blocking the shell
     # Use -- to separate options from the command arguments
@@ -43,9 +45,13 @@ if not set -q WAKATERM_FISH_LOADED
     
     # Use fish_preexec and fish_postexec events properly
     function wakaterm_preexec --on-event fish_preexec
-        # Store the command and start time
+        # Store the command and start time - don't filter here, let wakaterm_track handle it
         set -g WAKATERM_CURRENT_COMMAND "$argv[1]"
         set -g WAKATERM_COMMAND_START_TIME (date +%s.%3N)
+        
+        if test "$WAKATERM_DEBUG" = "1"
+            echo "WAKATERM DEBUG: Preexec captured: $argv[1]" >&2
+        end
     end
     
     function wakaterm_postexec --on-event fish_postexec
