@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional, List, Dict
 from datetime import datetime
 
-DEBUG_MODE = None
+global DEBUG_MODE
 
 class TerminalTracker:
     """Main terminal tracking class that logs to local files"""
