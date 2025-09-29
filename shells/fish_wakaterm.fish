@@ -16,7 +16,7 @@ function wakaterm_track
     set -l command "$argv[1]"
     set -l duration "$argv[2]"
     set -l cwd (pwd)
-    set -l timestamp (date +%s.%3N)
+    set -l timestamp (date +%s)
     
     # Skip empty commands and wakaterm itself
     if test -z "$command"; or string match -q "wakaterm*" "$command"
@@ -49,7 +49,7 @@ if not set -q WAKATERM_FISH_LOADED
     function wakaterm_preexec --on-event fish_preexec
         # Store the command and start time - don't filter here, let wakaterm_track handle it
         set -g WAKATERM_CURRENT_COMMAND "$argv[1]"
-        set -g WAKATERM_COMMAND_START_TIME (date +%s.%3N)
+        set -g WAKATERM_COMMAND_START_TIME (date +%s)
         
         if test "$WAKATERM_DEBUG" = "1"
             echo "WAKATERM DEBUG: Preexec captured: $argv[1]" >&2
@@ -59,7 +59,7 @@ if not set -q WAKATERM_FISH_LOADED
     function wakaterm_postexec --on-event fish_postexec
         # Calculate duration and track command
         if set -q WAKATERM_CURRENT_COMMAND; and set -q WAKATERM_COMMAND_START_TIME
-            set -l end_time (date +%s.%3N)
+            set -l end_time (date +%s)
             # Use bc for floating point arithmetic, fallback to 2.0 if bc is not available
             set -l duration (math "$end_time - $WAKATERM_COMMAND_START_TIME" 2>/dev/null; or echo "2.0")
             

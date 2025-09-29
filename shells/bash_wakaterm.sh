@@ -17,7 +17,8 @@ wakaterm_track() {
     local command="$1"
     local duration="$2"
     local cwd="$PWD"
-    local timestamp=$(date +%s.%3N)
+    # Use simple timestamp (seconds since epoch)
+    local timestamp=$(date +%s)
     
     # Skip empty commands, wakaterm itself, and source commands to avoid infinite loops
     if [[ -z "$command" || "$command" =~ ^wakaterm || "$command" =~ ^source.*wakaterm ]]; then
@@ -63,7 +64,7 @@ if [[ -n "$BASH_VERSION" ]]; then
         if [[ "$BASH_COMMAND" != "wakaterm_prompt_command" && 
               "$BASH_COMMAND" != "wakaterm_track"* && 
               "$BASH_COMMAND" != *"python.*wakaterm.py"* ]]; then
-            WAKATERM_COMMAND_START_TIME=$(date +%s.%3N)
+            WAKATERM_COMMAND_START_TIME=$(date +%s)
             WAKATERM_CURRENT_COMMAND="$BASH_COMMAND"
             
             if [[ "$WAKATERM_DEBUG" == "1" ]]; then
@@ -78,7 +79,7 @@ if [[ -n "$BASH_VERSION" ]]; then
         
         # Calculate duration if we have a start time
         if [[ -n "$WAKATERM_COMMAND_START_TIME" && -n "$WAKATERM_CURRENT_COMMAND" ]]; then
-            local end_time=$(date +%s.%3N)
+            local end_time=$(date +%s)
             local duration=$(echo "$end_time - $WAKATERM_COMMAND_START_TIME" | bc -l 2>/dev/null || echo "2.0")
             
             # Ensure duration is at least 0.1 seconds and reasonable (max 1 hour)

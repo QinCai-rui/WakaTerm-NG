@@ -17,7 +17,8 @@ wakaterm_track() {
     local command="$1"
     local duration="$2"
     local cwd="$PWD"
-    local timestamp=$(date +%s.%3N)
+    # Use simple timestamp (seconds since epoch)
+    local timestamp=$(date +%s)
     
     # Skip empty commands and wakaterm itself
     if [[ -z "$command" || "$command" =~ ^wakaterm ]]; then
@@ -70,7 +71,7 @@ if [[ -n "$ZSH_VERSION" ]]; then
         local command="$1"
         # Don't filter commands here - let wakaterm_track handle filtering
         WAKATERM_CURRENT_COMMAND="$command"
-        WAKATERM_COMMAND_START_TIME=$(date +%s.%3N)
+        WAKATERM_COMMAND_START_TIME=$(date +%s)
         
         if [[ "$WAKATERM_DEBUG" == "1" ]]; then
             echo "WAKATERM DEBUG: Preexec captured: $command" >&2
@@ -80,7 +81,7 @@ if [[ -n "$ZSH_VERSION" ]]; then
     # Function to track command completion with duration
     wakaterm_precmd() {
         if [[ -n "$WAKATERM_CURRENT_COMMAND" && -n "$WAKATERM_COMMAND_START_TIME" ]]; then
-            local end_time=$(date +%s.%3N)
+            local end_time=$(date +%s)
             local duration=$(echo "$end_time - $WAKATERM_COMMAND_START_TIME" | bc -l 2>/dev/null || echo "2.0")
             
             # Ensure duration is at least 0.1 seconds and reasonable (max 1 hour)
