@@ -113,7 +113,8 @@ load_modules_for_action() {
             printf "(4/4) "; load_installation
             ;;
         "setup-integration")
-            printf "(2/2) "; load_shell_integration
+            printf "(2/3) "; load_state_tracking
+            printf "(3/3) "; load_shell_integration
             ;;
         "test")
             printf "(2/2) "; load_installation
