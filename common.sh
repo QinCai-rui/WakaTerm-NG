@@ -42,9 +42,9 @@ fetch_and_source() {
     tmp=$(mktemp) || tmp="/tmp/wakaterm_tmp_$$.sh"
 
     if command -v curl >/dev/null 2>&1; then
-        # -sS: silent but show errors, -w '%{http_code}' to capture status
+        # -sS: silent but show errors, -L to follow redirects, -w '%{http_code}' to capture status
         local http_status
-        http_status=$(curl -sS -w '%{http_code}' -o "$tmp" "$url" 2>/dev/null || echo "000")
+        http_status=$(curl -sS -L -w '%{http_code}' -o "$tmp" "$url" 2>/dev/null || echo "000")
         if [[ "$http_status" == "200" && -s "$tmp" ]]; then
             # shellcheck disable=SC1090
             source "$tmp"
@@ -64,10 +64,15 @@ fetch_and_source() {
 }
 
 # Load modules (abort on failure to ensure later functions exist)
+printf "Loading modules... (1/5)\n"
 fetch_and_source "$RAW_BASE/modules/core_utils.sh" "core_utils.sh" || exit 1
+printf "Loading modules... (2/5)\n"
 fetch_and_source "$RAW_BASE/modules/state_tracking.sh" "state_tracking.sh" || exit 1
+printf "Loading modules... (3/5)\n"
 fetch_and_source "$RAW_BASE/modules/wakatime_cli.sh" "wakatime_cli.sh" || exit 1
+printf "Loading modules... (4/5)\n"
 fetch_and_source "$RAW_BASE/modules/shell_integration.sh" "shell_integration.sh" || exit 1
+printf "Loading modules... (5/5)\n"
 fetch_and_source "$RAW_BASE/modules/installation.sh" "installation.sh" || exit 1
 
 # Print usage
