@@ -1,6 +1,5 @@
 #!/bin/bash
 # WakaTerm NG Installation Script
-# Installs terminal wakatime plugin with respect to ~/.wakatime.cfg
 
 set -e
 
@@ -613,18 +612,20 @@ WakaTerm NG Installation Script
 Usage: $0 [OPTION]
 
 Options:
-    install     Install WakaTerm NG (default)
-    uninstall   Remove WakaTerm NG
-    upgrade     Upgrade to the latest version
-    test        Test current installation
-    help        Show this help message
+    install             Install WakaTerm NG (default)
+    uninstall           Remove WakaTerm NG
+    upgrade             Upgrade to the latest version
+    setup-integration   (Re)setup shell integration after installation
+    test                Test current installation
+    help                Show this help message
 
 Examples:
-    $0              # Install with auto-detected shell
-    $0 install      # Explicit install
-    $0 uninstall    # Remove installation
-    $0 upgrade      # Upgrade to latest version
-    $0 test         # Test installation
+    $0                              # Install with auto-detected shell
+    $0 install                      # Explicit install
+    $0 uninstall                    # Remove installation
+    $0 upgrade                      # Upgrade to latest version
+    $0 test                         # Test installation
+    $0 setup-integration [shell]    # Setup integration for current or specified shell (bash|zsh|fish)
 
 EOF
 }
@@ -644,6 +645,16 @@ main() {
             echo ""
             success "Installation complete!"
             log "WakaTerm NG will now track your terminal commands and send them to Wakatime."
+            ;;
+        "setup-integration")
+            echo "=== WakaTerm NG Setup Integration ==="
+            # Allow optional shell name in second arg, otherwise auto-detect
+            local requested_shell="${2:-}"
+            if [[ -n "$requested_shell" ]]; then
+                setup_shell_integration "$requested_shell"
+            else
+                setup_shell_integration "$(detect_shell)"
+            fi
             ;;
         "uninstall")
             echo "=== WakaTerm NG Uninstallation ==="
