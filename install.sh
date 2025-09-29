@@ -3,6 +3,18 @@
 
 set -e
 
+# If this script is piped to "sh" (curl | sh), ensure we are running under bash
+# because we rely on bash features (read -n, [[ ... ]], local, etc.). If bash
+# is available, re-exec under it reading from stdin. This preserves piped input.
+if [ -z "${BASH_VERSION:-}" ]; then
+    if command -v bash >/dev/null 2>&1; then
+        exec bash -s -- "$@"
+    else
+        printf "${RED}[ERROR]${NC} This installer requires bash. Please run it with bash.\n"
+        exit 1
+    fi
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -67,6 +79,31 @@ detect_shell() {
 # Check if command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+# Global auto-yes control. Honor -y/--yes or WAKATERM_AUTO_INSTALL=1 env var.
+FORCE_YES=0
+for arg in "$@"; do
+    case "$arg" in
+        -y|--yes)
+            FORCE_YES=1
+            ;;
+    esac
+done
+
+# Ask a yes/no question with a default of Yes. In non-interactive environments
+# (no TTY) or when FORCE_YES or WAKATERM_AUTO_INSTALL is set, automatically
+# choose Yes so piping (curl | sh) works.
+ask_confirm_default_yes() {
+    local prompt="$1"
+    if [[ "$FORCE_YES" -eq 1 || "${WAKATERM_AUTO_INSTALL:-}" == "1" || ! -t 0 ]]; then
+        REPLY="Y"
+        return 0
+    fi
+    printf "%s " "$prompt"
+    # read one character (bash builtin)
+    read -r -n 1 REPLY
+    echo
 }
 
 # Detect operating system
@@ -176,15 +213,14 @@ check_dependencies() {
     local wakatime_cli="$HOME/.wakatime/wakatime-cli"
     if [[ ! -f "$wakatime_cli" ]]; then
         warn "wakatime-cli not found at $wakatime_cli"
-        
-        read -p "Would you like to install wakatime-cli automatically? (Y/n): " -n 1 -r
-        echo
+
+        # Ask with default yes; in non-interactive runs this returns yes
+        ask_confirm_default_yes "Would you like to install wakatime-cli automatically? (Y/n):"
         if [[ $REPLY =~ ^[Nn]$ ]]; then
             warn "Skipping wakatime-cli installation"
             warn "Please install wakatime-cli manually: https://wakatime.com/terminal"
             warn "Or download from: https://github.com/wakatime/wakatime-cli/releases"
-            read -p "Continue anyway? (y/N): " -n 1 -r
-            echo
+            ask_confirm_default_yes "Continue anyway? (y/N):"
             if [[ ! $REPLY =~ ^[Yy]$ ]]; then
                 exit 1
             fi
@@ -194,8 +230,7 @@ check_dependencies() {
             else
                 error "Failed to install wakatime-cli automatically"
                 warn "Please install wakatime-cli manually: https://wakatime.com/terminal"
-                read -p "Continue anyway? (y/N): " -n 1 -r
-                echo
+                ask_confirm_default_yes "Continue anyway? (y/N):"
                 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
                     exit 1
                 fi
@@ -618,6 +653,7 @@ Options:
     setup-integration   (Re)setup shell integration after installation
     test                Test current installation
     help                Show this help message
+    -y, --yes           Automatically answer yes to prompts (non-interactive)
 
 Examples:
     $0                              # Install with auto-detected shell
@@ -626,6 +662,9 @@ Examples:
     $0 upgrade                      # Upgrade to latest version
     $0 test                         # Test installation
     $0 setup-integration [shell]    # Setup integration for current or specified shell (bash|zsh|fish)
+
+Environment:
+    WAKATERM_AUTO_INSTALL=1   # same as -y, auto-accept prompts
 
 EOF
 }
