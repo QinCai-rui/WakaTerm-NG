@@ -113,35 +113,6 @@ wakatermctl today --json
 wakatermctl today --debug
 ```
 
-### Example Output
-
-```
-📊 Today's Terminal Activity
-============================
-⏱️  Total Time: 2h 34m (127 commands)
-📈 Daily Average: 2h 34m
-
-🔤 Languages/Categories:
-   • Python: 1h 12m (47.2%)
-   • Git: 32m (20.8%)
-   • JavaScript: 28m (18.3%)
-   • Docker: 15m (9.7%)
-   • Shell: 7m (4.0%)
-
-⚡ Most Used Commands:
-   • python: 23 times (18.1%)
-   • git: 18 times (14.2%)
-   • npm: 12 times (9.4%)
-   • code: 8 times (6.3%)
-   • docker: 7 times (5.5%)
-
-📁 Projects:
-   • my-python-project: 1h 8m (44.2%)
-   • web-frontend: 45m (29.1%)
-   • terminal-wakatime: 32m (20.7%)
-   • dotfiles: 9m (6.0%)
-```
-
 ## Management Commands
 
 ```bash
