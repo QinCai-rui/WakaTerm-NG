@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+"""
+WakaTermCtl - Terminal Stats Viewer for WakaTerm NG
+A command-line tool to view your terminal activity statistics from local logs
+"""
+#why? cos API too complicated
+
+import os
+import sys
+import json
+import argparse
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Dict, List, Optional
+from collections import defaultdict, Counter
+import glob
+
+
+class LocalStatsReader:
+    """Reads and analyzes terminal activity from local log files"""
+    
+    def __init__(self, log_dir: Optional[str] = None):
+        self.log_dir = Path(log_dir or os.path.expanduser('~/.local/share/wakaterm/logs'))
+        
+    def _read_log_files(self, start_date: datetime, end_date: datetime) -> List[Dict]:
+        """Read log entries from files within date range"""
+        entries = []
+        
+        if not self.log_dir.exists():
+            return entries
+            
+        # list of dates to check
+        current_date = start_date.date()
+        end_date_only = end_date.date()
+        
+        while current_date <= end_date_only:
+            log_file = self.log_dir / f"wakaterm-{current_date.strftime('%Y-%m-%d')}.jsonl"
+            if log_file.exists():
+                try:
+                    with open(log_file, 'r', encoding='utf-8') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line:
+                                try:
+                                    entry = json.loads(line)
+                                    entry_time = datetime.fromtimestamp(entry['timestamp'])
+                                    if start_date <= entry_time <= end_date:
+                                        entries.append(entry)
+                                except (json.JSONDecodeError, KeyError, ValueError):
+                                    continue
+                except Exception:
+                    continue
+            current_date += timedelta(days=1)
+                    
+        return entries
+    
+    def get_stats_for_period(self, period: str) -> Dict:
+        """Get stats for a specific period"""
+        now = datetime.now()
+        
+        if period == "today":
+            start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = now
+        elif period == "yesterday":
+            yesterday = now - timedelta(days=1)
+            start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
+        elif period == "last_7_days":
+            start_date = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = now
+        elif period == "last_30_days":
+            start_date = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = now
+        elif period == "last_6_months":
+            start_date = (now - timedelta(days=180)).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = now
+        elif period == "last_year":
+            start_date = (now - timedelta(days=365)).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = now
+        else:
+            # Default to today
+            start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = now
+        
+        entries = self._read_log_files(start_date, end_date)
+        return self._calculate_stats(entries, period)
+    
+    def _calculate_stats(self, entries: List[Dict], period: str) -> Dict:
+        """Calculate statistics from log entries"""
+        if not entries:
+            return {"data": None}
+        
+        # Count entries by various dimensions
+        language_counts = Counter()
+        project_counts = Counter()
+        command_counts = Counter()
+        daily_counts = defaultdict(int)
+        
+        total_commands = len(entries)
+        total_seconds = sum(entry.get('duration', 2.0) for entry in entries)
+        
+        for entry in entries:
+            language = entry.get('language', 'Unknown')
+            project = entry.get('project', 'Unknown')
+            base_command = entry.get('base_command', 'unknown')
+            
+            language_counts[language] += entry.get('duration', 2.0)
+            project_counts[project] += entry.get('duration', 2.0)
+            command_counts[base_command] += 1
+            
+            # Daily breakdown
+            entry_date = datetime.fromtimestamp(entry['timestamp']).date()
+            daily_counts[entry_date] += entry.get('duration', 2.0)
+        
+        # Calculate daily average
+        days_in_period = len(daily_counts) if daily_counts else 1
+        daily_average = total_seconds / days_in_period if days_in_period > 0 else 0
+        
+        # Format top items with percentages
+        def format_top_items(counter, limit=10):
+            items = []
+            for name, seconds in counter.most_common(limit):
+                percentage = (seconds / total_seconds * 100) if total_seconds > 0 else 0
+                items.append({
+                    'name': name,
+                    'total_seconds': seconds,
+                    'percent': percentage
+                })
+            return items
+        
+        return {
+            "data": {
+                "total_seconds": total_seconds,
+                "total_commands": total_commands,
+                "daily_average": daily_average,
+                "languages": format_top_items(language_counts),
+                "projects": format_top_items(project_counts),
+                "commands": [
+                    {"name": cmd, "count": count, "percent": count/total_commands*100 if total_commands > 0 else 0}
+                    for cmd, count in command_counts.most_common(10)
+                ],
+                "daily_breakdown": {
+                    str(date): seconds for date, seconds in daily_counts.items()
+                }
+            }
+        }
+
+
+class StatsFormatter:
+    """Format statistics for terminal display"""
+    
+    @staticmethod
+    def format_time(seconds: float) -> str:
+        """Convert seconds to human readable time format"""
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        elif seconds < 3600:
+            minutes = int(seconds // 60)
+            remaining_seconds = int(seconds % 60)
+            return f"{minutes}m {remaining_seconds}s"
+        else:
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            return f"{hours}h {minutes}m"
+    
+    @staticmethod
+    def format_stats(stats_data: Dict, title: str) -> str:
+        """Format stats data for display"""
+        if not stats_data or 'data' not in stats_data or not stats_data['data']:
+            return f"\n📊 {title}\n❌ No terminal activity recorded\n"
+        
+        data = stats_data['data']
+        output = [f"\n📊 {title}"]
+        output.append("=" * (len(title) + 3))
+        
+        # Total time and commands
+        if 'total_seconds' in data:
+            total_time = StatsFormatter.format_time(data['total_seconds'])
+            total_commands = data.get('total_commands', 0)
+            output.append(f"⏱️  Total Time: {total_time} ({total_commands} commands)")
+        
+        # Daily average
+        if 'daily_average' in data and data['daily_average']:
+            avg_time = StatsFormatter.format_time(data['daily_average'])
+            output.append(f"📈 Daily Average: {avg_time}")
+        
+        # Top Languages/Categories
+        if 'languages' in data and data['languages']:
+            output.append("\n🔤 Languages/Categories:")
+            for lang in data['languages'][:7]:  # Top 7 languages
+                name = lang.get('name', 'Unknown')
+                percent = lang.get('percent', 0)
+                time_str = StatsFormatter.format_time(lang.get('total_seconds', 0))
+                output.append(f"   • {name}: {time_str} ({percent:.1f}%)")
+        
+        # Top Commands
+        if 'commands' in data and data['commands']:
+            output.append("\n⚡ Most Used Commands:")
+            for cmd in data['commands'][:5]:  # Top 5 commands
+                name = cmd.get('name', 'unknown')
+                count = cmd.get('count', 0)
+                percent = cmd.get('percent', 0)
+                output.append(f"   • {name}: {count} times ({percent:.1f}%)")
+        
+        # Top Projects
+        if 'projects' in data and data['projects']:
+            output.append("\n📁 Projects:")
+            for project in data['projects'][:5]:  # Top 5 projects
+                name = project.get('name', 'Unknown')
+                percent = project.get('percent', 0)
+                time_str = StatsFormatter.format_time(project.get('total_seconds', 0))
+                output.append(f"   • {name}: {time_str} ({percent:.1f}%)")
+        
+        return "\n".join(output) + "\n"
+
+
+def main():
+    """Main CLI entry point"""
+    parser = argparse.ArgumentParser(
+        description="View your terminal activity statistics from local logs",
+        prog="wakatermctl"
+    )
+    
+    parser.add_argument(
+        "period",
+        nargs="?",
+        default="today",
+        choices=["today", "yesterday", "last_7_days", "last_30_days", "last_6_months", "last_year"],
+        help="Time period for statistics (default: today)"
+    )
+    
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON data"
+    )
+    
+    parser.add_argument(
+        "--log-dir",
+        help="Directory containing wakaterm log files"
+    )
+    
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show debug information"
+    )
+    
+    args = parser.parse_args()
+    
+    try:
+        # Initialize stats reader
+        reader = LocalStatsReader(args.log_dir)
+        
+        # Show debug info if requested
+        if args.debug:
+            print(f"🔧 Debug Info:", file=sys.stderr)
+            print(f"   Log directory: {reader.log_dir}", file=sys.stderr)
+            print(f"   Directory exists: {reader.log_dir.exists()}", file=sys.stderr)
+            if reader.log_dir.exists():
+                log_files = list(reader.log_dir.glob("wakaterm-*.jsonl"))
+                print(f"   Log files found: {len(log_files)}", file=sys.stderr)
+                for log_file in sorted(log_files)[-5:]:  # Show last 5 files
+                    print(f"     {log_file.name}", file=sys.stderr)
+            print("", file=sys.stderr)
+        
+        # Get statistics
+        stats = reader.get_stats_for_period(args.period)
+        
+        if args.json:
+            print(json.dumps(stats, indent=2))
+            return
+        
+        # Format and display
+        period_names = {
+            "today": "Today's Terminal Activity",
+            "yesterday": "Yesterday's Terminal Activity", 
+            "last_7_days": "Last 7 Days Terminal Activity",
+            "last_30_days": "Last 30 Days Terminal Activity",
+            "last_6_months": "Last 6 Months Terminal Activity",
+            "last_year": "Last Year Terminal Activity"
+        }
+        
+        title = period_names.get(args.period, args.period.title())
+        formatted_stats = StatsFormatter.format_stats(stats, title or "Terminal Activity")
+        print(formatted_stats)
+        
+    except KeyboardInterrupt:
+        print("\n👋 Goodbye!")
+        sys.exit(0)
+    except Exception as e:
+        if args.debug:
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
