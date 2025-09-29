@@ -37,7 +37,7 @@ detect_shell() {
     # Try to detect the actual running shell for this process
     local parent_shell
     parent_shell=$(ps -p $PPID -o comm= 2>/dev/null | awk '{print $1}')
-    parent_shell=$(basename "$parent_shell")
+    parent_shell=$(basename -- "$parent_shell")
     # Normalise some common shell names
     case "$parent_shell" in
         -bash|bash) echo "bash" ;;
@@ -46,9 +46,20 @@ detect_shell() {
         *)
             # Fallback to $SHELL env if unknown
             if [ -n "$SHELL" ]; then
-                echo "$(basename \"$SHELL\")"
+                # Use basename safely and fall back to 'unknown' if empty
+                local shname
+                shname=$(basename -- "$SHELL")
+                if [ -n "$shname" ]; then
+                    echo "$shname"
+                else
+                    echo "unknown"
+                fi
             else
-                echo "$parent_shell"
+                if [ -n "$parent_shell" ]; then
+                    echo "$parent_shell"
+                else
+                    echo "unknown"
+                fi
             fi
             ;;
     esac
@@ -280,7 +291,7 @@ setup_bash_integration() {
     echo "# WakaTerm NG Integration" >> "$config_file"
     echo "$source_line" >> "$config_file"
     
-    success "Bash integration added to $(basename "$config_file")"
+    success "Bash integration added to $(basename -- "$config_file")"
     log "Please restart your terminal or run: source $config_file"
 }
 
@@ -347,7 +358,7 @@ setup_zsh_integration() {
     echo "# WakaTerm NG Integration" >> "$config_file"
     echo "$source_line" >> "$config_file"
     
-    success "Zsh integration added to $(basename "$config_file")"
+    success "Zsh integration added to $(basename -- "$config_file")"
     log "Please restart your terminal or run: source $config_file"
 }
 
@@ -454,7 +465,7 @@ remove_from_file() {
     if [[ -f "$file" ]] && grep -q "$marker" "$file"; then
         # Create a temporary file without the wakaterm lines
         grep -v "$marker\|wakaterm" "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
-        success "Removed integration from $(basename "$file")"
+        success "Removed integration from $(basename -- "$file")"
     fi
 }
 
