@@ -32,10 +32,26 @@ success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
-# Detect shell
+# Detect shell (use parent process, not just $SHELL env)
 detect_shell() {
-    local shell_name=$(basename "$SHELL")
-    echo "$shell_name"
+    # Try to detect the actual running shell for this process
+    local parent_shell
+    parent_shell=$(ps -p $PPID -o comm= 2>/dev/null | awk '{print $1}')
+    parent_shell=$(basename "$parent_shell")
+    # Normalise some common shell names
+    case "$parent_shell" in
+        -bash|bash) echo "bash" ;;
+        -zsh|zsh) echo "zsh" ;;
+        -fish|fish) echo "fish" ;;
+        *)
+            # Fallback to $SHELL env if unknown
+            if [ -n "$SHELL" ]; then
+                echo "$(basename \"$SHELL\")"
+            else
+                echo "$parent_shell"
+            fi
+            ;;
+    esac
 }
 
 # Check if command exists
@@ -49,6 +65,11 @@ check_dependencies() {
     
     if ! command_exists python3; then
         error "Python 3 is required but not installed."
+        exit 1
+    fi
+
+    if ! command_exists git; then
+        error "Git is required but not installed."
         exit 1
     fi
     
@@ -162,28 +183,11 @@ add_api_key_to_config() {
 install_wakaterm() {
     log "Installing WakaTerm NG..."
     
-    # Create install directory
-    mkdir -p "$INSTALL_DIR"
-    mkdir -p "$INSTALL_DIR/shells"
-    
-    # Copy files
-    # TODO: use `install' command (if available) for better permissions
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    
-    if [[ -f "$script_dir/wakaterm.py" ]]; then
-        cp "$script_dir/wakaterm.py" "$INSTALL_DIR/"
-        chmod +x "$INSTALL_DIR/wakaterm.py"
-    else
-        error "wakaterm.py not found in $script_dir"
+    # Clone files
+    git clone https://github.com/QinCai-rui/WakaTerm-NG.git "$INSTALL_DIR" || {
+        error "Failed to clone WakaTerm NG repository. If you have already installed it, consider running '$0 upgrade' instead."
         exit 1
-    fi
-    
-    if [[ -d "$script_dir/shells" ]]; then
-        cp -r "$script_dir/shells/"* "$INSTALL_DIR/shells/"
-    else
-        error "shells directory not found in $script_dir"
-        exit 1
-    fi
+    }
     
     success "WakaTerm NG installed to $INSTALL_DIR"
 }
@@ -467,6 +471,22 @@ test_installation() {
     fi
 }
 
+# Upgrade the installation
+upgrade_installation() {
+    log "Upgrading WakaTerm NG..."
+    if [[ -d "$INSTALL_DIR" ]]; then
+        cd "$INSTALL_DIR"
+        git pull origin main || {
+            error "Failed to upgrade WakaTerm NG."
+            exit 1
+        }
+        success "WakaTerm NG upgraded to the latest version."
+    else
+        error "WakaTerm NG is not installed. Cannot upgrade."
+        exit 1
+    fi
+}
+
 # Print usage
 usage() {
     cat << EOF
@@ -477,6 +497,7 @@ Usage: $0 [OPTION]
 Options:
     install     Install WakaTerm NG (default)
     uninstall   Remove WakaTerm NG
+    upgrade     Upgrade to the latest version
     test        Test current installation
     help        Show this help message
 
@@ -484,6 +505,7 @@ Examples:
     $0              # Install with auto-detected shell
     $0 install      # Explicit install
     $0 uninstall    # Remove installation
+    $0 upgrade      # Upgrade to latest version
     $0 test         # Test installation
 
 EOF
@@ -508,6 +530,10 @@ main() {
         "uninstall")
             echo "=== WakaTerm NG Uninstallation ==="
             uninstall
+            ;;
+        "upgrade")
+            echo "=== WakaTerm NG Upgrade ==="
+            upgrade_installation
             ;;
         "test")
             test_installation
