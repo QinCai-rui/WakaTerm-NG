@@ -27,13 +27,15 @@ wakaterm_track() {
     # Optional debug mode - set WAKATERM_DEBUG=1 to see what's being tracked
     if [[ "$WAKATERM_DEBUG" == "1" ]]; then
         echo "WAKATERM: Tracking command: $command (duration: ${duration}s)" >&2
+        # In debug mode, run in foreground to capture errors
+        python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" "$command"
+    else
+        # Run Python script in background with proper detachment to avoid blocking the shell
+        {
+            python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" "$command" >/dev/null 2>&1 &
+            disown
+        } 2>/dev/null
     fi
-    
-    # Run Python script in background with proper detachment to avoid blocking the shell
-    {
-        python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" "$command" >/dev/null 2>&1 &
-        disown
-    } 2>/dev/null
 }
 
 # Hook into bash command execution

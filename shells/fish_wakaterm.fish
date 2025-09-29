@@ -26,12 +26,14 @@ function wakaterm_track
     # Optional debug mode - set WAKATERM_DEBUG=1 to see what's being tracked
     if test "$WAKATERM_DEBUG" = "1"
         echo "WAKATERM: Tracking command: $command (duration: ${duration}s)" >&2
+        # In debug mode, run in foreground to capture errors
+        python3 "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" -- $command
+    else
+        # Run Python script in background to avoid blocking the shell
+        # Use -- to separate options from the command arguments
+        python3 "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" -- $command >/dev/null 2>&1 &
+        disown
     end
-    
-    # Run Python script in background to avoid blocking the shell
-    # Use -- to separate options from the command arguments
-    python3 "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" -- $command &
-    disown
 end
 
 # Hook into fish command execution
