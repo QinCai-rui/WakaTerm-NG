@@ -94,33 +94,33 @@ load_modules_for_action() {
     local action="$1"
     
     # Always load core utilities first
-    load_core_modules
+    printf "(1/?) "; load_core_modules
     
     case "$action" in
         "install")
-            load_state_tracking
-            load_wakatime_cli
-            load_shell_integration
-            load_installation
+            printf "(2/5) "; load_state_tracking
+            printf "(3/5) "; load_wakatime_cli
+            printf "(4/5) "; load_shell_integration
+            printf "(5/5) "; load_installation
             ;;
         "uninstall")
-            load_state_tracking
-            load_installation
+            printf "(2/3) "; load_state_tracking
+            printf "(3/3) "; load_installation
             ;;
         "upgrade")
-            load_state_tracking
-            load_wakatime_cli
-            load_installation
+            printf "(2/4) "; load_state_tracking
+            printf "(3/4) "; load_wakatime_cli
+            printf "(4/4) "; load_installation
             ;;
         "setup-integration")
-            load_shell_integration
+            printf "(2/2) "; load_shell_integration
             ;;
         "test")
-            load_installation
+            printf "(2/2) "; load_installation
             ;;
         "status")
-            load_state_tracking
-            load_installation
+            printf "(2/3) "; load_state_tracking
+            printf "(3/3) "; load_installation
             ;;
         "help"|"-h"|"--help")
             # Only core utilities needed for help
@@ -217,5 +217,6 @@ main() {
     esac
 }
 
-# Run main function with all arguments
+# Load required modules for the action, then run main function
+load_modules_for_action "$1"
 main "$@"

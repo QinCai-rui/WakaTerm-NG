@@ -25,7 +25,7 @@ function wakaterm_track
     
     # Optional debug mode - set WAKATERM_DEBUG=1 to see what's being tracked
     if test "$WAKATERM_DEBUG" = "1"
-        echo "WAKATERM: Tracking command: $command (duration: ${duration}s)" >&2
+        echo "WAKATERM: Tracking command: $command (duration: $duration s)" >&2
         # In debug mode, run in foreground to capture errors
         python3 "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" -- $command
     else
@@ -38,8 +38,7 @@ end
 
 # Hook into fish command execution
 # Check if wakaterm is already loaded to prevent double-loading
-if not set -q WAKATERM_FISH_LOADED    
-    # Set environment variable to indicate WakaTerm is loaded
+if not set -q WAKATERM_FISH_LOADED
     set -gx WAKATERM_FISH_LOADED 1
     
     # Variables to track timing
