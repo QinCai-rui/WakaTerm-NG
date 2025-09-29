@@ -16,6 +16,7 @@ jobs:
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
+        ref: main
 
     - name: Extract version from release tag
       id: get_version
@@ -52,14 +53,14 @@ jobs:
 
     - name: Commit and push changes
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
         
         if git diff --quiet; then
           echo "No changes to commit"
         else
           git add install.sh wakaterm.py
           git commit -m "chore: update version to ${{ steps.get_version.outputs.version }}"
-          git push
+          git push origin main
           echo "Version updated and pushed to repository"
         fi

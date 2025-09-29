@@ -18,7 +18,7 @@ WakaTerm NG is a terminal plugin that integrates with [WakaTime](https://wakatim
 1. Run the following commands in your terminal:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/QinCai-rui/terminal-wakatime/main/install.sh | bash
+   curl -fsSL https://go.qincai.xyz/wakaterm-ng | bash
    ```
 
 2. Follow the prompts to configure your shell and enter your WakaTime API key.
