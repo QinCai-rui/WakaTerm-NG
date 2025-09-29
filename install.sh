@@ -448,6 +448,27 @@ install_wakaterm() {
         exit 1
     }
     
+    # Install wakatermctl command
+    log "Installing wakatermctl command..."
+    local bin_dir="$HOME/.local/bin"
+    mkdir -p "$bin_dir"
+    
+    # Create symlink for wakatermctl
+    if [[ -f "$INSTALL_DIR/wakatermctl" ]]; then
+        chmod +x "$INSTALL_DIR/wakatermctl"
+        ln -sf "$INSTALL_DIR/wakatermctl" "$bin_dir/wakatermctl"
+        success "wakatermctl command installed to $bin_dir"
+        
+        # Check if ~/.local/bin is in PATH
+        if [[ ":$PATH:" != *":$bin_dir:"* ]]; then
+            warn "~/.local/bin is not in your PATH. You may need to add it:"
+            warn "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
+            warn "  source ~/.bashrc"
+        fi
+    else
+        warn "wakatermctl script not found in repository"
+    fi
+    
     success "WakaTerm NG installed to $INSTALL_DIR"
 }
 
