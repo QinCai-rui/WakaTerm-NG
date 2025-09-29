@@ -556,6 +556,16 @@ add_api_key_to_config() {
 install_wakaterm() {
     log "Installing WakaTerm NG..."
     
+    # Migrate existing logs to new location if needed
+    local old_logs_dir="$HOME/.local/share/wakaterm/logs"
+    local new_logs_dir="$HOME/.local/share/wakaterm-logs"
+    if [[ -d "$old_logs_dir" && ! -d "$new_logs_dir" ]]; then
+        log "Migrating existing logs to new location..."
+        mkdir -p "$new_logs_dir"
+        mv "$old_logs_dir"/* "$new_logs_dir/" 2>/dev/null || true
+        success "Migrated logs from $old_logs_dir to $new_logs_dir"
+    fi
+    
     # Check for existing installation
     if [[ -d "$INSTALL_DIR" ]]; then
         if [[ -f "$STATE_FILE" ]]; then
@@ -996,7 +1006,7 @@ try:
             pass  # Directory not empty or other issue
     
     print(f'   Removed {removed_files} files and {removed_dirs} empty directories')
-    print(f'   Log files preserved in ~/.local/share/wakaterm/logs/')
+    print(f'   Log files preserved in ~/.local/share/wakaterm-logs/')
 except Exception as e:
     print(f'   Error removing files: {e}')
 "
@@ -1005,6 +1015,7 @@ except Exception as e:
     if [[ -d "$INSTALL_DIR" ]]; then
         # Move logs to a safe location if they exist
         local logs_dir="$HOME/.local/share/wakaterm/logs"
+        local new_logs_dir="$HOME/.local/share/wakaterm-logs"
         local temp_logs_dir="/tmp/wakaterm_logs_backup_$$"
         
         if [[ -d "$logs_dir" ]]; then
@@ -1015,11 +1026,12 @@ except Exception as e:
         rm -rf "$INSTALL_DIR"
         success "Removed installation directory: $INSTALL_DIR"
         
-        # Restore logs if they existed
+        # Restore logs to new location if they existed
         if [[ -d "$temp_logs_dir" ]]; then
-            mkdir -p "$(dirname "$logs_dir")"
-            mv "$temp_logs_dir" "$logs_dir"
-            success "Preserved activity logs at: $logs_dir"
+            mkdir -p "$new_logs_dir"
+            mv "$temp_logs_dir"/* "$new_logs_dir/" 2>/dev/null || true
+            rmdir "$temp_logs_dir" 2>/dev/null || true
+            success "Preserved activity logs at: $new_logs_dir"
         fi
     fi
     
@@ -1040,6 +1052,7 @@ legacy_uninstall() {
     
     # Preserve logs before removing installation directory
     local logs_dir="$HOME/.local/share/wakaterm/logs"
+    local new_logs_dir="$HOME/.local/share/wakaterm-logs"
     local temp_logs_dir="/tmp/wakaterm_logs_backup_$$"
     
     if [[ -d "$logs_dir" ]]; then
@@ -1052,11 +1065,12 @@ legacy_uninstall() {
         success "Removed $INSTALL_DIR"
     fi
     
-    # Restore logs if they existed
+    # Restore logs to new location if they existed
     if [[ -d "$temp_logs_dir" ]]; then
-        mkdir -p "$(dirname "$logs_dir")"
-        mv "$temp_logs_dir" "$logs_dir"
-        success "Preserved activity logs at: $logs_dir"
+        mkdir -p "$new_logs_dir"
+        mv "$temp_logs_dir"/* "$new_logs_dir/" 2>/dev/null || true
+        rmdir "$temp_logs_dir" 2>/dev/null || true
+        success "Preserved activity logs at: $new_logs_dir"
     fi
     
     # Remove common symlinks

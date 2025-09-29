@@ -19,7 +19,7 @@ class TerminalTracker:
     """Main terminal tracking class that logs to local files"""
     
     def __init__(self, log_dir: Optional[str] = None):
-        self.log_dir = Path(log_dir or os.path.expanduser('~/.local/share/wakaterm/logs'))
+        self.log_dir = Path(log_dir or os.path.expanduser('~/.local/share/wakaterm-logs'))
         self.log_dir.mkdir(parents=True, exist_ok=True)
         
         # Log file path - one file per day

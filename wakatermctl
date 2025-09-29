@@ -20,7 +20,7 @@ class LocalStatsReader:
     """Reads and analyzes terminal activity from local log files"""
     
     def __init__(self, log_dir: Optional[str] = None):
-        self.log_dir = Path(log_dir or os.path.expanduser('~/.local/share/wakaterm/logs'))
+        self.log_dir = Path(log_dir or os.path.expanduser('~/.local/share/wakaterm-logs'))
         
     def _read_log_files(self, start_date: datetime, end_date: datetime) -> List[Dict]:
         """Read log entries from files within date range"""
