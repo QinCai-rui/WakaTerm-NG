@@ -3,7 +3,7 @@
 # This file should be sourced in ~/.zshrc
 
 # Get the directory where wakaterm is installed
-WAKATERM_DIR="${0:A:h:h}"
+WAKATERM_DIR="$HOME/.local/share/wakaterm"
 WAKATERM_PYTHON="${WAKATERM_DIR}/wakaterm.py"
 
 # Check if wakaterm.py exists

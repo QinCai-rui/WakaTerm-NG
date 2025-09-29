@@ -2,7 +2,7 @@
 # This file should be sourced in ~/.config/fish/config.fish
 
 # Get the directory where wakaterm is installed
-set -l wakaterm_dir (dirname (status --current-filename))/..
+set -l wakaterm_dir "$HOME/.local/share/wakaterm"
 set -l wakaterm_python "$wakaterm_dir/wakaterm.py"
 
 # Check if wakaterm.py exists

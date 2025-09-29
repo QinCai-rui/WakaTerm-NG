@@ -3,7 +3,7 @@
 # This file should be sourced in ~/.bashrc or ~/.bash_profile
 
 # Get the directory where wakaterm is installed
-WAKATERM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WAKATERM_DIR="$HOME/.local/share/wakaterm"
 WAKATERM_PYTHON="${WAKATERM_DIR}/wakaterm.py"
 
 # Check if wakaterm.py exists
