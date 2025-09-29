@@ -20,7 +20,25 @@ class TerminalTracker:
     
     def __init__(self, log_dir: Optional[str] = None):
         self.log_dir = Path(log_dir or os.path.expanduser('~/.local/share/wakaterm-logs'))
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create logs directory with better error handling
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+        except (OSError, PermissionError) as e:
+            # Fallback to a temp directory if we can't create in the preferred location
+            import tempfile
+            fallback_dir = Path(tempfile.gettempdir()) / 'wakaterm-logs'
+            try:
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                self.log_dir = fallback_dir
+                # Write a warning to stderr ONLY if in debug mode
+                if os.getenv('WAKATERM_DEBUG') == '1':
+                    print(f"Warning: Could not create {log_dir or '~/.local/share/wakaterm-logs'}, using {fallback_dir}", file=sys.stderr)
+            except Exception:
+                # If even temp directory fails, can't log anything
+                if os.getenv('WAKATERM_DEBUG') == '1':
+                    print(f"Error: Could not create any log directory. Original error: {e}", file=sys.stderr)
+                raise
         
         # Log file path - one file per day
         today = datetime.now().strftime('%Y-%m-%d')

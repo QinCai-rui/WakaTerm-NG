@@ -566,6 +566,17 @@ install_wakaterm() {
         success "Migrated logs from $old_logs_dir to $new_logs_dir"
     fi
     
+    # Ensure logs directory exists for fresh installations
+    if [[ ! -d "$new_logs_dir" ]]; then
+        log "Creating logs directory..."
+        if mkdir -p "$new_logs_dir" 2>/dev/null; then
+            success "Created logs directory at $new_logs_dir"
+        else
+            warn "Could not create logs directory at $new_logs_dir"
+            warn "WakaTerm will attempt to create it at runtime or use a fallback location"
+        fi
+    fi
+    
     # Check for existing installation
     if [[ -d "$INSTALL_DIR" ]]; then
         if [[ -f "$STATE_FILE" ]]; then
