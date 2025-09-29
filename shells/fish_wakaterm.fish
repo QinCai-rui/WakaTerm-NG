@@ -77,6 +77,9 @@ if not set -q WAKATERM_FISH_LOADED
             set -e WAKATERM_COMMAND_START_TIME
         end
     end
+    
+    # Set environment variable to indicate WakaTerm is loaded
+    set -gx WAKATERM_FISH_LOADED 1
 else
     echo "Warning: wakaterm fish integration already loaded, skipping..." >&2
 end
