@@ -92,19 +92,26 @@ for arg in "$@"; do
     esac
 done
 
-# Ask a yes/no question with a default of Yes. In non-interactive environments
-# (no TTY) or when FORCE_YES or WAKATERM_AUTO_INSTALL is set, automatically
-# choose Yes so piping (curl | sh) works.
+# Ask a yes/no question with a default of Yes. ONLY auto-answer when
+# requested via -y/--yes flag or WAKATERM_AUTO_INSTALL env var.
 ask_confirm_default_yes() {
     local prompt="$1"
-    if [[ "$FORCE_YES" -eq 1 || "${WAKATERM_AUTO_INSTALL:-}" == "1" || ! -t 0 ]]; then
+    if [[ "$FORCE_YES" -eq 1 || "${WAKATERM_AUTO_INSTALL:-}" == "1" ]]; then
+        printf "%s Y (auto-answered)\n" "$prompt"
         REPLY="Y"
         return 0
     fi
-    printf "%s " "$prompt"
-    # read one character (bash builtin)
-    read -r -n 1 REPLY
-    echo
+
+    # Force interactive mode (redirect from /dev/tty)
+    if [[ ! -t 0 ]]; then
+        printf "%s " "$prompt"
+        read -r -n 1 REPLY </dev/tty
+        echo
+    else
+        printf "%s " "$prompt"
+        read -r -n 1 REPLY
+        echo
+    fi
 }
 
 # Detect operating system
@@ -533,7 +540,8 @@ check_wakatime_config() {
     if [[ ! -f "$WAKATIME_CONFIG" ]]; then
         warn "Wakatime config file not found at $WAKATIME_CONFIG"
         
-        read -p "Would you like to create a basic config file? (y/N): " -n 1 -r
+        printf "Would you like to create a basic config file? (y/N): "
+        read -n 1 -r REPLY </dev/tty
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             create_wakatime_config
@@ -547,7 +555,8 @@ check_wakatime_config() {
             success "Wakatime config found with API key"
         else
             warn "Wakatime config found but no API key detected"
-            read -p "Would you like to add your API key now? (y/N): " -n 1 -r
+            printf "Would you like to add your API key now? (y/N): "
+            read -n 1 -r REPLY </dev/tty
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 add_api_key_to_config
@@ -560,7 +569,8 @@ check_wakatime_config() {
 create_wakatime_config() {
     log "Creating basic Wakatime config..."
     
-    read -p "Enter your Wakatime API key: " -s api_key
+    printf "Enter your Wakatime API key: "
+    read -s api_key </dev/tty
     echo
     
     if [[ -z "$api_key" ]]; then
@@ -586,7 +596,8 @@ EOF
 
 # Add API key to existing config
 add_api_key_to_config() {
-    read -p "Enter your Wakatime API key: " -s api_key
+    printf "Enter your Wakatime API key: "
+    read -s api_key </dev/tty
     echo
     
     if [[ -z "$api_key" ]]; then
