@@ -129,7 +129,7 @@ init_state_file() {
     cat > "$STATE_FILE" << EOF
 {
   "install_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "installer_version": "1.0.2",
+  "installer_version": "1.1.0",
   "directories_created": [],
   "files_created": [],
   "files_modified": [],
