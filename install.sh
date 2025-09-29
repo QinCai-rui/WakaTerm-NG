@@ -17,19 +17,19 @@ WAKATIME_CONFIG="$HOME/.wakatime.cfg"
 
 # Functions
 log() {
-    echo -e "\n${BLUE}[INFO]${NC} $1"
+    printf "\n${BLUE}[INFO]${NC} %s\n" "$1"
 }
 
 warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
+    printf "${YELLOW}[WARN]${NC} %s\n" "$1"
 }
 
 error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    printf "${RED}[ERROR]${NC} %s\n" "$1"
 }
 
 success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    printf "${GREEN}[SUCCESS]${NC} %s\n" "$1"
 }
 
 # Detect shell (use parent process, not just $SHELL env)
@@ -70,6 +70,95 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Detect operating system
+detect_os() {
+    case "$(uname -s)" in
+        Darwin)
+            echo "macos"
+            ;;
+        Linux)
+            echo "linux"
+            ;;
+        *)
+            echo "unknown"
+            ;;
+    esac
+}
+
+# Install wakatime-cli automatically
+install_wakatime_cli() {
+    local os=$(detect_os)
+    local wakatime_dir="$HOME/.wakatime"
+    local wakatime_cli="$wakatime_dir/wakatime-cli"
+    
+    log "Installing wakatime-cli..."
+    
+    # Create wakatime directory if it doesn't exist
+    mkdir -p "$wakatime_dir"
+    
+    case "$os" in
+        "macos")
+            # Check if Homebrew is available
+            if command_exists brew; then
+                log "Installing wakatime-cli via Homebrew..."
+                if brew install wakatime-cli; then
+                    # Create symlink if brew install succeeded
+                    local brew_wakatime
+                    brew_wakatime=$(brew --prefix)/bin/wakatime-cli
+                    if [[ -f "$brew_wakatime" ]]; then
+                        ln -sf "$brew_wakatime" "$wakatime_cli"
+                        success "wakatime-cli installed via Homebrew"
+                        return 0
+                    fi
+                fi
+            fi
+            # Fallback to direct download
+            log "Downloading wakatime-cli for macOS..."
+            if command_exists curl; then
+                curl -sSL "https://github.com/wakatime/wakatime-cli/releases/latest/download/wakatime-cli-darwin-amd64" -o "$wakatime_cli"
+            elif command_exists wget; then
+                wget -q "https://github.com/wakatime/wakatime-cli/releases/latest/download/wakatime-cli-darwin-amd64" -O "$wakatime_cli"
+            else
+                error "Neither curl nor wget found. Cannot download wakatime-cli."
+                return 1
+            fi
+            ;;
+        "linux")
+            log "Downloading wakatime-cli for Linux..."
+            if command_exists curl; then
+                curl -sSL "https://github.com/wakatime/wakatime-cli/releases/latest/download/wakatime-cli-linux-amd64" -o "$wakatime_cli"
+            elif command_exists wget; then
+                wget -q "https://github.com/wakatime/wakatime-cli/releases/latest/download/wakatime-cli-linux-amd64" -O "$wakatime_cli"
+            else
+                error "Neither curl nor wget found. Cannot download wakatime-cli."
+                return 1
+            fi
+            ;;
+        *)
+            error "Unsupported operating system: $(uname -s)"
+            error "Please manually install wakatime-cli from: https://github.com/wakatime/wakatime-cli/releases"
+            return 1
+            ;;
+    esac
+    
+    # Make executable
+    if [[ -f "$wakatime_cli" ]]; then
+        chmod +x "$wakatime_cli"
+        
+        # Test if it works
+        if "$wakatime_cli" --version >/dev/null 2>&1; then
+            success "wakatime-cli installed and working"
+            return 0
+        else
+            error "wakatime-cli downloaded but not working properly"
+            return 1
+        fi
+    else
+        error "Failed to download wakatime-cli"
+        return 1
+    fi
+}
+
 # Check dependencies
 check_dependencies() {
     log "Checking dependencies..."
@@ -88,12 +177,30 @@ check_dependencies() {
     local wakatime_cli="$HOME/.wakatime/wakatime-cli"
     if [[ ! -f "$wakatime_cli" ]]; then
         warn "wakatime-cli not found at $wakatime_cli"
-        warn "Please install wakatime-cli first: https://wakatime.com/terminal"
-        warn "Or download from: https://github.com/wakatime/wakatime-cli/releases"
-        read -p "Continue anyway? (y/N): " -n 1 -r
+        
+        read -p "Would you like to install wakatime-cli automatically? (Y/n): " -n 1 -r
         echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then # if not yes, then
-            exit 1
+        if [[ $REPLY =~ ^[Nn]$ ]]; then
+            warn "Skipping wakatime-cli installation"
+            warn "Please install wakatime-cli manually: https://wakatime.com/terminal"
+            warn "Or download from: https://github.com/wakatime/wakatime-cli/releases"
+            read -p "Continue anyway? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                exit 1
+            fi
+        else
+            if install_wakatime_cli; then
+                success "wakatime-cli installed successfully"
+            else
+                error "Failed to install wakatime-cli automatically"
+                warn "Please install wakatime-cli manually: https://wakatime.com/terminal"
+                read -p "Continue anyway? (y/N): " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    exit 1
+                fi
+            fi
         fi
     else
         # Make sure it's executable
