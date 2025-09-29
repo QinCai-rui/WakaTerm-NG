@@ -109,7 +109,8 @@ class TerminalTracker:
             
             # Package Managers
             'brew': 'Package Manager', 'apt': 'Package Manager', 'yum': 'Package Manager',
-            'pacman': 'Package Manager', 'zypper': 'Package Manager',
+            'pacman': 'Package Manager', 'zypper': 'Package Manager', 'dnf': 'Package Manager',
+            'choco': 'Package Manager', 'scoop': 'Package Manager',
         }
         
         return language_map.get(cmd, 'Shell')
