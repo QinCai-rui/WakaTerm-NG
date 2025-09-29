@@ -977,6 +977,28 @@ except Exception as e:
     print(f'   Error removing files: {e}')
 "
     
+    # Remove main installation directory (but preserve logs)
+    if [[ -d "$INSTALL_DIR" ]]; then
+        # Move logs to a safe location if they exist
+        local logs_dir="$HOME/.local/share/wakaterm/logs"
+        local temp_logs_dir="/tmp/wakaterm_logs_backup_$$"
+        
+        if [[ -d "$logs_dir" ]]; then
+            mv "$logs_dir" "$temp_logs_dir" 2>/dev/null || true
+        fi
+        
+        # Remove the installation directory
+        rm -rf "$INSTALL_DIR"
+        success "Removed installation directory: $INSTALL_DIR"
+        
+        # Restore logs if they existed
+        if [[ -d "$temp_logs_dir" ]]; then
+            mkdir -p "$(dirname "$logs_dir")"
+            mv "$temp_logs_dir" "$logs_dir"
+            success "Preserved activity logs at: $logs_dir"
+        fi
+    fi
+    
     # Remove state file last
     if [[ -f "$STATE_FILE" ]]; then
         rm -f "$STATE_FILE"
@@ -992,10 +1014,25 @@ except Exception as e:
 legacy_uninstall() {
     warn "Performing legacy uninstall (no state tracking available)"
     
+    # Preserve logs before removing installation directory
+    local logs_dir="$HOME/.local/share/wakaterm/logs"
+    local temp_logs_dir="/tmp/wakaterm_logs_backup_$$"
+    
+    if [[ -d "$logs_dir" ]]; then
+        mv "$logs_dir" "$temp_logs_dir" 2>/dev/null || true
+    fi
+    
     # Remove installation directory
     if [[ -d "$INSTALL_DIR" ]]; then
         rm -rf "$INSTALL_DIR"
         success "Removed $INSTALL_DIR"
+    fi
+    
+    # Restore logs if they existed
+    if [[ -d "$temp_logs_dir" ]]; then
+        mkdir -p "$(dirname "$logs_dir")"
+        mv "$temp_logs_dir" "$logs_dir"
+        success "Preserved activity logs at: $logs_dir"
     fi
     
     # Remove common symlinks
