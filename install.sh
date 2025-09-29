@@ -92,19 +92,26 @@ for arg in "$@"; do
     esac
 done
 
-# Ask a yes/no question with a default of Yes. In non-interactive environments
-# (no TTY) or when FORCE_YES or WAKATERM_AUTO_INSTALL is set, automatically
-# choose Yes so piping (curl | sh) works.
+# Ask a yes/no question with a default of Yes. ONLY auto-answer when
+# requested via -y/--yes flag or WAKATERM_AUTO_INSTALL env var.
 ask_confirm_default_yes() {
     local prompt="$1"
-    if [[ "$FORCE_YES" -eq 1 || "${WAKATERM_AUTO_INSTALL:-}" == "1" || ! -t 0 ]]; then
+    if [[ "$FORCE_YES" -eq 1 || "${WAKATERM_AUTO_INSTALL:-}" == "1" ]]; then
+        printf "%s Y (auto-answered)\n" "$prompt"
         REPLY="Y"
         return 0
     fi
-    printf "%s " "$prompt"
-    # read one character (bash builtin)
-    read -r -n 1 REPLY
-    echo
+
+    # Force interactive mode (redirect from /dev/tty)
+    if [[ ! -t 0 ]]; then
+        printf "%s " "$prompt"
+        read -r -n 1 REPLY </dev/tty
+        echo
+    else
+        printf "%s " "$prompt"
+        read -r -n 1 REPLY
+        echo
+    fi
 }
 
 # Detect operating system
@@ -135,7 +142,8 @@ init_state_file() {
   "files_modified": [],
   "shell_integrations": [],
   "symlinks_created": [],
-  "backups_created": []
+  "backups_created": [],
+  "wakatime_cli_downloads": []
 }
 EOF
 }
@@ -225,6 +233,48 @@ track_symlink() {
     track_state "symlinks_created" "$link"
 }
 
+# Track wakatime-cli download
+track_wakatime_cli_download() {
+    local method="$1"        # "homebrew", "github_release", or "manual"
+    local version="$2"       # version if available
+    local download_url="${3:-}"  # URL if downloaded
+    local file_path="$4"     # final CLI file path
+    
+    if [[ ! -f "$STATE_FILE" ]]; then
+        return 0  # Silently skip if state file doesn't exist
+    fi
+    
+    # Use python to safely update JSON
+    python3 -c "
+import json, sys
+from datetime import datetime
+try:
+    with open('$STATE_FILE', 'r') as f:
+        data = json.load(f)
+    
+    if 'wakatime_cli_downloads' not in data:
+        data['wakatime_cli_downloads'] = []
+    
+    entry = {
+        'timestamp': datetime.utcnow().isoformat() + 'Z',
+        'method': '$method',
+        'file_path': '$file_path'
+    }
+    
+    if '$version':
+        entry['version'] = '$version'
+    if '$download_url':
+        entry['download_url'] = '$download_url'
+    
+    data['wakatime_cli_downloads'].append(entry)
+    
+    with open('$STATE_FILE', 'w') as f:
+        json.dump(data, f, indent=2)
+except Exception:
+    pass  # Silently fail to avoid breaking installation
+"
+}
+
 # Read state file
 read_state() {
     if [[ -f "$STATE_FILE" ]]; then
@@ -244,7 +294,7 @@ install_wakatime_cli() {
     log "Installing wakatime-cli..."
     
     # Create wakatime directory if it doesn't exist
-    mkdir -p "$wakatime_dir"
+    track_mkdir "$wakatime_dir"
     
     # Detect architecture and normalise to release asset naming (amd64, arm64, 386)
     local arch_raw
@@ -285,6 +335,15 @@ install_wakatime_cli() {
                     brew_wakatime=$(brew --prefix)/bin/wakatime-cli
                     if [[ -f "$brew_wakatime" ]]; then
                         ln -sf "$brew_wakatime" "$wakatime_cli"
+                        
+                        # Get version for tracking
+                        local version
+                        version=$("$wakatime_cli" --version 2>/dev/null | head -n1 || echo "unknown")
+                        
+                        # Track the installation
+                        track_wakatime_cli_download "homebrew" "$version" "" "$wakatime_cli"
+                        track_file_creation "$wakatime_cli"
+                        
                         success "wakatime-cli installed via Homebrew"
                         return 0
                     fi
@@ -394,6 +453,14 @@ install_wakatime_cli() {
         
         # Test if it works
         if "$wakatime_cli" --version >/dev/null 2>&1; then
+            # Get version for tracking
+            local version
+            version=$("$wakatime_cli" --version 2>/dev/null | head -n1 || echo "unknown")
+            
+            # Track the successful installation
+            track_wakatime_cli_download "github_release" "$version" "${download_url:-}" "$wakatime_cli"
+            track_file_creation "$wakatime_cli"
+            
             success "wakatime-cli installed and working"
             return 0
         else
@@ -473,7 +540,8 @@ check_wakatime_config() {
     if [[ ! -f "$WAKATIME_CONFIG" ]]; then
         warn "Wakatime config file not found at $WAKATIME_CONFIG"
         
-        read -p "Would you like to create a basic config file? (y/N): " -n 1 -r
+        printf "Would you like to create a basic config file? (y/N): "
+        read -n 1 -r REPLY </dev/tty
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             create_wakatime_config
@@ -487,7 +555,8 @@ check_wakatime_config() {
             success "Wakatime config found with API key"
         else
             warn "Wakatime config found but no API key detected"
-            read -p "Would you like to add your API key now? (y/N): " -n 1 -r
+            printf "Would you like to add your API key now? (y/N): "
+            read -n 1 -r REPLY </dev/tty
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 add_api_key_to_config
@@ -500,7 +569,8 @@ check_wakatime_config() {
 create_wakatime_config() {
     log "Creating basic Wakatime config..."
     
-    read -p "Enter your Wakatime API key: " -s api_key
+    printf "Enter your Wakatime API key: "
+    read -s api_key </dev/tty
     echo
     
     if [[ -z "$api_key" ]]; then
@@ -526,7 +596,8 @@ EOF
 
 # Add API key to existing config
 add_api_key_to_config() {
-    read -p "Enter your Wakatime API key: " -s api_key
+    printf "Enter your Wakatime API key: "
+    read -s api_key </dev/tty
     echo
     
     if [[ -z "$api_key" ]]; then
