@@ -63,17 +63,73 @@ fetch_and_source() {
     return 1
 }
 
-# Load modules (abort on failure to ensure later functions exist)
-printf "Loading modules... (1/5)\n"
-fetch_and_source "$RAW_BASE/modules/core_utils.sh" "core_utils.sh" || exit 1
-printf "Loading modules... (2/5)\n"
-fetch_and_source "$RAW_BASE/modules/state_tracking.sh" "state_tracking.sh" || exit 1
-printf "Loading modules... (3/5)\n"
-fetch_and_source "$RAW_BASE/modules/wakatime_cli.sh" "wakatime_cli.sh" || exit 1
-printf "Loading modules... (4/5)\n"
-fetch_and_source "$RAW_BASE/modules/shell_integration.sh" "shell_integration.sh" || exit 1
-printf "Loading modules... (5/5)\n"
-fetch_and_source "$RAW_BASE/modules/installation.sh" "installation.sh" || exit 1
+# Module loading functions
+load_core_modules() {
+    printf "Loading core utilities...\n"
+    fetch_and_source "$RAW_BASE/modules/core_utils.sh" "core_utils.sh" || exit 1
+}
+
+load_state_tracking() {
+    printf "Loading state tracking...\n"
+    fetch_and_source "$RAW_BASE/modules/state_tracking.sh" "state_tracking.sh" || exit 1
+}
+
+load_wakatime_cli() {
+    printf "Loading wakatime CLI...\n"
+    fetch_and_source "$RAW_BASE/modules/wakatime_cli.sh" "wakatime_cli.sh" || exit 1
+}
+
+load_shell_integration() {
+    printf "Loading shell integration...\n"
+    fetch_and_source "$RAW_BASE/modules/shell_integration.sh" "shell_integration.sh" || exit 1
+}
+
+load_installation() {
+    printf "Loading installation...\n"
+    fetch_and_source "$RAW_BASE/modules/installation.sh" "installation.sh" || exit 1
+}
+
+# Load modules based on subcommand requirements
+load_modules_for_action() {
+    local action="$1"
+    
+    # Always load core utilities first
+    load_core_modules
+    
+    case "$action" in
+        "install")
+            load_state_tracking
+            load_wakatime_cli
+            load_shell_integration
+            load_installation
+            ;;
+        "uninstall")
+            load_state_tracking
+            load_installation
+            ;;
+        "upgrade")
+            load_state_tracking
+            load_wakatime_cli
+            load_installation
+            ;;
+        "setup-integration")
+            load_shell_integration
+            ;;
+        "test")
+            load_installation
+            ;;
+        "status")
+            load_state_tracking
+            load_installation
+            ;;
+        "help"|"-h"|"--help")
+            # Only core utilities needed for help
+            ;;
+        *)
+            # Unknown action - load core for error handling
+            ;;
+    esac
+}
 
 # Print usage
 usage() {
@@ -110,6 +166,9 @@ EOF
 # Main function
 main() {
     local action="${1:-install}"
+    
+    # Load only the modules needed for this specific action
+    load_modules_for_action "$action"
     
     case "$action" in
         "install")
