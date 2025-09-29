@@ -25,6 +25,7 @@ NC='\033[0m' # No Color
 # Configuration
 INSTALL_DIR="$HOME/.local/share/wakaterm"
 WAKATIME_CONFIG="$HOME/.wakatime.cfg"
+STATE_FILE="$HOME/.local/share/wakaterm/.install_state.json"
 
 # Functions
 log() {
@@ -120,6 +121,119 @@ detect_os() {
             ;;
     esac
 }
+
+# State tracking functions
+# This is purely created by GitHub Copilot
+init_state_file() {
+    mkdir -p "$(dirname "$STATE_FILE")"
+    cat > "$STATE_FILE" << EOF
+{
+  "install_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "installer_version": "2.0.0",
+  "directories_created": [],
+  "files_created": [],
+  "files_modified": [],
+  "shell_integrations": [],
+  "symlinks_created": [],
+  "backups_created": []
+}
+EOF
+}
+
+# Add entry to state file
+track_state() {
+    local category="$1"
+    local item="$2"
+    local backup_path="${3:-}"
+    
+    if [[ ! -f "$STATE_FILE" ]]; then
+        return 0  # Silently skip if state file doesn't exist
+    fi
+    
+    # Use python to safely update JSON (more reliable than sed/awk)
+    python3 -c "
+import json, sys
+try:
+    with open('$STATE_FILE', 'r') as f:
+        data = json.load(f)
+    
+    if '$category' not in data:
+        data['$category'] = []
+    
+    entry = '$item'
+    if '$backup_path':
+        entry = {'path': '$item', 'backup': '$backup_path'}
+    
+    if entry not in data['$category']:
+        data['$category'].append(entry)
+    
+    with open('$STATE_FILE', 'w') as f:
+        json.dump(data, f, indent=2)
+except Exception:
+    pass  # Silently fail to avoid breaking installation
+"
+}
+
+# Create backup of file before modification
+create_backup() {
+    local file="$1"
+    if [[ -f "$file" ]]; then
+        local backup="${file}.wakaterm.backup.$(date +%s)"
+        cp "$file" "$backup"
+        track_state "backups_created" "$backup"
+        echo "$backup"
+    fi
+}
+
+# Safe file modification with backup
+modify_file_with_backup() {
+    local file="$1"
+    local content="$2"
+    local marker="$3"
+    
+    # Create backup first
+    local backup_path=""
+    if [[ -f "$file" ]]; then
+        backup_path=$(create_backup "$file")
+    fi
+    
+    # Add content to file
+    echo "$content" >> "$file"
+    
+    # Track the modification
+    track_state "files_modified" "$file" "$backup_path"
+}
+
+# Track directory creation
+track_mkdir() {
+    local dir="$1"
+    mkdir -p "$dir"
+    track_state "directories_created" "$dir"
+}
+
+# Track file creation
+track_file_creation() {
+    local file="$1"
+    track_state "files_created" "$file"
+}
+
+# Track symlink creation
+track_symlink() {
+    local target="$1"
+    local link="$2"
+    ln -sf "$target" "$link"
+    track_state "symlinks_created" "$link"
+}
+
+# Read state file
+read_state() {
+    if [[ -f "$STATE_FILE" ]]; then
+        cat "$STATE_FILE"
+    else
+        echo "{}"
+    fi
+}
+# END TRACKING FUNCTIONS
 
 # Install wakatime-cli automatically
 install_wakatime_cli() {
@@ -442,21 +556,32 @@ add_api_key_to_config() {
 install_wakaterm() {
     log "Installing WakaTerm NG..."
     
+    # Initialize state tracking
+    init_state_file
+    
+    # Create install directory and track it
+    track_mkdir "$INSTALL_DIR"
+    
     # Clone files
     git clone https://github.com/QinCai-rui/WakaTerm-NG.git "$INSTALL_DIR" || {
         error "Failed to clone WakaTerm NG repository. If you have already installed it, consider running '$0 upgrade' instead."
         exit 1
     }
     
+    # Track all files in the cloned directory
+    find "$INSTALL_DIR" -type f | while read -r file; do
+        track_file_creation "$file"
+    done
+    
     # Install wakatermctl command
     log "Installing wakatermctl command..."
     local bin_dir="$HOME/.local/bin"
-    mkdir -p "$bin_dir"
+    track_mkdir "$bin_dir"
     
     # Create symlink for wakatermctl
     if [[ -f "$INSTALL_DIR/wakatermctl" ]]; then
         chmod +x "$INSTALL_DIR/wakatermctl"
-        ln -sf "$INSTALL_DIR/wakatermctl" "$bin_dir/wakatermctl"
+        track_symlink "$INSTALL_DIR/wakatermctl" "$bin_dir/wakatermctl"
         success "wakatermctl command installed to $bin_dir"
         
         # Check if ~/.local/bin is in PATH
@@ -549,7 +674,7 @@ setup_bash_integration() {
         return 0
     fi
     
-    # Add integration
+    # Add integration with tracking
     if ! echo "" >> "$config_file" 2>/dev/null; then
         error "Failed to write to $config_file"
         warn "Please manually add the following line to your shell configuration:"
@@ -557,8 +682,12 @@ setup_bash_integration() {
         return 1
     fi
     
-    echo "# WakaTerm NG Integration" >> "$config_file"
-    echo "$source_line" >> "$config_file"
+    local integration_content="
+# WakaTerm NG Integration
+$source_line"
+    
+    modify_file_with_backup "$config_file" "$integration_content" "WakaTerm NG Integration"
+    track_state "shell_integrations" "$config_file"
     
     success "Bash integration added to $(basename -- "$config_file")"
     log "Please restart your terminal or run: source $config_file"
@@ -616,7 +745,7 @@ setup_zsh_integration() {
         fi
     fi
     
-    # Add integration
+    # Add integration with tracking
     if ! echo "" >> "$config_file" 2>/dev/null; then
         error "Failed to write to $config_file"
         warn "Please manually add the following line to your zsh configuration:"
@@ -624,8 +753,12 @@ setup_zsh_integration() {
         return 1
     fi
     
-    echo "# WakaTerm NG Integration" >> "$config_file"
-    echo "$source_line" >> "$config_file"
+    local integration_content="
+# WakaTerm NG Integration
+$source_line"
+    
+    modify_file_with_backup "$config_file" "$integration_content" "WakaTerm NG Integration"
+    track_state "shell_integrations" "$config_file"
     
     success "Zsh integration added to $(basename -- "$config_file")"
     log "Please restart your terminal or run: source $config_file"
@@ -682,7 +815,7 @@ setup_fish_integration() {
         fi
     fi
     
-    # Add integration
+    # Add integration with tracking
     if ! echo "" >> "$fish_config" 2>/dev/null; then
         error "Failed to write to $fish_config"
         warn "Please manually add the following line to your fish configuration:"
@@ -690,16 +823,174 @@ setup_fish_integration() {
         return 1
     fi
     
-    echo "# WakaTerm NG Integration" >> "$fish_config"
-    echo "$source_line" >> "$fish_config"
+    local integration_content="
+# WakaTerm NG Integration
+$source_line"
+    
+    modify_file_with_backup "$fish_config" "$integration_content" "WakaTerm NG Integration"
+    track_state "shell_integrations" "$fish_config"
     
     success "Fish integration added to config.fish"
     log "Please restart your terminal or run: source ~/.config/fish/config.fish"
 }
 
-# Uninstall function
+# Smart uninstall function using state tracking
 uninstall() {
     log "Uninstalling WakaTerm NG..."
+    
+    if [[ ! -f "$STATE_FILE" ]]; then
+        warn "No installation state file found. Attempting legacy uninstall..."
+        legacy_uninstall
+        return
+    fi
+    
+    log "Reading installation state..."
+    local state_content=$(cat "$STATE_FILE")
+    
+    # Show installation info
+    local install_date=$(echo "$state_content" | python3 -c "import sys,json; print(json.load(sys.stdin).get('install_date', 'Unknown'))")
+    log "Found installation from: $install_date"
+    
+    # Restore backed up files
+    log "Restoring backed up files..."
+    echo "$state_content" | python3 -c "
+import sys, json, os
+try:
+    data = json.load(sys.stdin)
+    backups = data.get('backups_created', [])
+    files_modified = data.get('files_modified', [])
+    
+    restored = 0
+    for backup_path in backups:
+        if os.path.exists(backup_path):
+            # Find the original file path
+            original_file = backup_path.split('.wakaterm.backup.')[0]
+            if os.path.exists(original_file):
+                os.rename(backup_path, original_file)
+                print(f'   Restored: {os.path.basename(original_file)}')
+                restored += 1
+    
+    if restored > 0:
+        print(f'   Restored {restored} backed up files')
+    else:
+        print('   No backed up files to restore')
+except Exception as e:
+    print(f'   Error restoring backups: {e}')
+"
+    
+    # Remove shell integrations based on state
+    log "Removing shell integrations..."
+    echo "$state_content" | python3 -c "
+import sys, json, os
+try:
+    data = json.load(sys.stdin)
+    integrations = data.get('shell_integrations', [])
+    
+    removed = 0
+    for config_file in integrations:
+        if os.path.exists(config_file):
+            # Remove WakaTerm NG integration lines
+            with open(config_file, 'r') as f:
+                lines = f.readlines()
+            
+            # Filter out WakaTerm NG lines
+            filtered_lines = []
+            skip_next = False
+            for line in lines:
+                if 'WakaTerm NG Integration' in line:
+                    skip_next = True
+                    continue
+                if skip_next and ('wakaterm' in line.lower() or 'source' in line):
+                    skip_next = False
+                    continue
+                skip_next = False
+                filtered_lines.append(line)
+            
+            # Write back the cleaned file
+            with open(config_file, 'w') as f:
+                f.writelines(filtered_lines)
+            
+            print(f'   Cleaned: {os.path.basename(config_file)}')
+            removed += 1
+    
+    if removed > 0:
+        print(f'   Removed integrations from {removed} shell config files')
+    else:
+        print('   No shell integrations found to remove')
+except Exception as e:
+    print(f'   Error removing integrations: {e}')
+"
+    
+    # Remove symlinks
+    log "Removing symlinks..."
+    echo "$state_content" | python3 -c "
+import sys, json, os
+try:
+    data = json.load(sys.stdin)
+    symlinks = data.get('symlinks_created', [])
+    
+    removed = 0
+    for symlink_path in symlinks:
+        if os.path.islink(symlink_path):
+            os.remove(symlink_path)
+            print(f'   Removed: {symlink_path}')
+            removed += 1
+    
+    if removed > 0:
+        print(f'   Removed {removed} symlinks')
+    else:
+        print('   No symlinks found to remove')
+except Exception as e:
+    print(f'   Error removing symlinks: {e}')
+"
+    
+    # Remove created files (but keep user data like logs)
+    log "Removing installation files..."
+    echo "$state_content" | python3 -c "
+import sys, json, os, shutil
+try:
+    data = json.load(sys.stdin)
+    files_created = data.get('files_created', [])
+    directories_created = data.get('directories_created', [])
+    
+    # Remove files (excluding log files to preserve user data)
+    removed_files = 0
+    for file_path in files_created:
+        if os.path.exists(file_path) and '.log' not in file_path.lower() and 'wakaterm-' not in os.path.basename(file_path):
+            os.remove(file_path)
+            removed_files += 1
+    
+    # Remove empty directories (in reverse order)
+    removed_dirs = 0
+    for dir_path in reversed(directories_created):
+        try:
+            if os.path.exists(dir_path) and 'logs' not in dir_path:
+                if not os.listdir(dir_path):  # Only remove if empty
+                    os.rmdir(dir_path)
+                    removed_dirs += 1
+        except OSError:
+            pass  # Directory not empty or other issue
+    
+    print(f'   Removed {removed_files} files and {removed_dirs} empty directories')
+    print(f'   Log files preserved in ~/.local/share/wakaterm/logs/')
+except Exception as e:
+    print(f'   Error removing files: {e}')
+"
+    
+    # Remove state file last
+    if [[ -f "$STATE_FILE" ]]; then
+        rm -f "$STATE_FILE"
+        success "Removed installation state file"
+    fi
+    
+    success "WakaTerm NG uninstalled successfully!"
+    log "Your activity logs have been preserved."
+    log "Please restart your terminal to complete removal"
+}
+
+# Legacy uninstall for installations without state tracking
+legacy_uninstall() {
+    warn "Performing legacy uninstall (no state tracking available)"
     
     # Remove installation directory
     if [[ -d "$INSTALL_DIR" ]]; then
@@ -707,7 +998,14 @@ uninstall() {
         success "Removed $INSTALL_DIR"
     fi
     
-    # Remove shell integrations
+    # Remove common symlinks
+    local bin_dir="$HOME/.local/bin"
+    if [[ -L "$bin_dir/wakatermctl" ]]; then
+        rm -f "$bin_dir/wakatermctl"
+        success "Removed wakatermctl symlink"
+    fi
+    
+    # Remove shell integrations using old method
     local shell_name=$(detect_shell)
     case "$shell_name" in
         "bash")
@@ -722,8 +1020,7 @@ uninstall() {
             ;;
     esac
     
-    success "WakaTerm NG uninstalled"
-    log "Please restart your terminal to complete removal"
+    success "Legacy uninstall completed"
 }
 
 # Remove integration from config file
@@ -767,6 +1064,103 @@ upgrade_installation() {
     fi
 }
 
+# Show installation status
+show_status() {
+    echo "=== WakaTerm NG Installation Status ==="
+    
+    if [[ ! -f "$STATE_FILE" ]]; then
+        if [[ -d "$INSTALL_DIR" ]]; then
+            warn "Legacy installation detected (no state tracking)"
+            log "Installation directory: $INSTALL_DIR"
+            log "Use 'upgrade' to enable state tracking"
+        else
+            error "WakaTerm NG is not installed"
+        fi
+        return 1
+    fi
+    
+    log "Reading installation state..."
+    local state_content=$(cat "$STATE_FILE")
+    
+    echo "$state_content" | python3 -c "
+import sys, json, os
+try:
+    data = json.load(sys.stdin)
+    
+    print(f'📅 Installation Date: {data.get(\"install_date\", \"Unknown\")}')
+    print(f'🔖 Installer Version: {data.get(\"installer_version\", \"Unknown\")}')
+    print()
+    
+    # Directories
+    dirs = data.get('directories_created', [])
+    print(f'📁 Directories Created: {len(dirs)}')
+    for d in dirs[:5]:  # Show first 5
+        status = '✅' if os.path.exists(d) else '❌'
+        print(f'   {status} {d}')
+    if len(dirs) > 5:
+        print(f'   ... and {len(dirs) - 5} more')
+    print()
+    
+    # Files
+    files = data.get('files_created', [])
+    print(f'📄 Files Created: {len(files)}')
+    existing = sum(1 for f in files if os.path.exists(f))
+    print(f'   {existing}/{len(files)} files still exist')
+    print()
+    
+    # Shell integrations
+    integrations = data.get('shell_integrations', [])
+    print(f'🐚 Shell Integrations: {len(integrations)}')
+    for config in integrations:
+        status = '✅' if os.path.exists(config) else '❌'
+        name = os.path.basename(config)
+        # Check if integration is actually present
+        if os.path.exists(config):
+            with open(config, 'r') as f:
+                content = f.read()
+                if 'WakaTerm NG' in content:
+                    status = '✅ Active'
+                else:
+                    status = '⚠️  Missing'
+        print(f'   {status} {name}')
+    print()
+    
+    # Symlinks
+    symlinks = data.get('symlinks_created', [])
+    print(f'🔗 Symlinks Created: {len(symlinks)}')
+    for link in symlinks:
+        if os.path.islink(link):
+            target = os.readlink(link)
+            status = '✅'
+        else:
+            status = '❌'
+            target = 'Missing'
+        name = os.path.basename(link)
+        print(f'   {status} {name} -> {target}')
+    print()
+    
+    # Backups
+    backups = data.get('backups_created', [])
+    print(f'💾 Backups Created: {len(backups)}')
+    existing_backups = sum(1 for b in backups if os.path.exists(b))
+    print(f'   {existing_backups}/{len(backups)} backup files preserved')
+    print()
+    
+    # Quick health check
+    missing_files = sum(1 for f in files if not os.path.exists(f))
+    missing_links = sum(1 for l in symlinks if not os.path.islink(l))
+    
+    if missing_files == 0 and missing_links == 0:
+        print('✅ Installation appears healthy')
+    else:
+        print(f'⚠️  Issues detected: {missing_files} missing files, {missing_links} missing symlinks')
+        print('   Consider running: $0 upgrade')
+    
+except Exception as e:
+    print(f'Error reading state: {e}')
+"
+}
+
 # Print usage
 usage() {
     cat << EOF
@@ -780,6 +1174,7 @@ Options:
     upgrade             Upgrade to the latest version
     setup-integration   (Re)setup shell integration after installation
     test                Test current installation
+    status              Show installation status and tracked changes
     help                Show this help message
     -y, --yes           Automatically answer yes to prompts (non-interactive)
 
@@ -834,6 +1229,9 @@ main() {
             ;;
         "test")
             test_installation
+            ;;
+        "status")
+            show_status
             ;;
         "help"|"-h"|"--help")
             usage
