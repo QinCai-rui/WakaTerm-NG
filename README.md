@@ -36,4 +36,3 @@ Once installed, your terminal activity will be tracked automatically. A `wakater
 ## License
 
 This project is licensed under the MPL v2 License. See the [LICENSE](LICENSE) file for details.
-
