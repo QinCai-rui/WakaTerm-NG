@@ -217,8 +217,9 @@ ls`, `cp`, `mv`, `find`, etc.
 
 ```bash
 # Check if shell integration is loaded
+echo $WAKATERM_BASH_LOADED  # For Bash
+echo $WAKATERM_ZSH_LOADED   # For Zsh
 echo $WAKATERM_FISH_LOADED  # For Fish
-env | grep WAKATERM         # Check environment
 
 # Enable debug mode
 export WAKATERM_DEBUG=1
