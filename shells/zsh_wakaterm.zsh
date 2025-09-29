@@ -118,4 +118,5 @@ if [[ -n "$ZSH_VERSION" ]]; then
             add-zsh-hook precmd "$func"
         fi
     done
+    export WAKATERM_ZSH_LOADED=1
 fi
