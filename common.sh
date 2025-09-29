@@ -1,6 +1,5 @@
 #!/bin/bash
 # WakaTerm NG Installation Script
-# Modularized version - sources modules from modules/ directory
 
 set -e
 
@@ -35,19 +34,13 @@ for arg in "$@"; do
     esac
 done
 
-# Source all module files
-if [[ -d "$MODULES_DIR" ]]; then
-    # Source modules in the correct order to handle deps
-    source "$MODULES_DIR/core_utils.sh"
-    source "$MODULES_DIR/state_tracking.sh"
-    source "$MODULES_DIR/wakatime_cli.sh"
-    source "$MODULES_DIR/shell_integration.sh"
-    source "$MODULES_DIR/installation.sh"
-else
-    printf "\033[0;31m[ERROR]\033[0m Modules directory not found at: $MODULES_DIR\n"
-    printf "Please ensure all module files are present in the modules/ directory.\n"
-    exit 1
-fi
+# Source all module files (from github repo)
+# Get files from GitHub repo
+source <(curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/refs/heads/main/modules/core_utils.sh)
+source <(curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/refs/heads/main/modules/state_tracking.sh)
+source <(curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/refs/heads/main/modules/wakatime_cli.sh)
+source <(curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/refs/heads/main/modules/shell_integration.sh)
+source <(curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/refs/heads/main/modules/installation.sh)
 
 # Print usage
 usage() {
