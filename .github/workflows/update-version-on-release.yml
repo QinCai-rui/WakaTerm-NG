@@ -27,17 +27,17 @@ jobs:
         echo "version=${VERSION}" >> $GITHUB_OUTPUT
         echo "Extracted version: ${VERSION}"
 
-    - name: Update version in install.sh
+    - name: Update version in state_tracking.sh
       run: |
         VERSION="${{ steps.get_version.outputs.version }}"
-        echo "Updating installer_version in install.sh to ${VERSION}"
-        
-        # Update the installer_version in install.sh
-        sed -i "s/\"installer_version\": \"[^\"]*\"/\"installer_version\": \"${VERSION}\"/g" install.sh
-        
+        echo "Updating installer_version in state_tracking.sh to ${VERSION}"
+
+        # Update the installer_version in state_tracking.sh
+        sed -i "s/\"installer_version\": \"[^\"]*\"/\"installer_version\": \"${VERSION}\"/g" modules/state_tracking.sh
+
         # Verify the change
-        echo "Updated content in install.sh:"
-        grep -n "installer_version" install.sh
+        echo "Updated content in modules/state_tracking.sh:"
+        grep -n "installer_version" modules/state_tracking.sh
 
     - name: Update version in wakaterm.py
       run: |
@@ -59,7 +59,7 @@ jobs:
         if git diff --quiet; then
           echo "No changes to commit"
         else
-          git add install.sh wakaterm.py
+          git add modules/state_tracking.sh wakaterm.py
           git commit -m "chore: update version to ${{ steps.get_version.outputs.version }}"
           git push origin main
           echo "Version updated and pushed to repository"
