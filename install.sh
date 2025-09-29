@@ -556,17 +556,41 @@ add_api_key_to_config() {
 install_wakaterm() {
     log "Installing WakaTerm NG..."
     
-    # Initialize state tracking
-    init_state_file
+    # Check for existing installation
+    if [[ -d "$INSTALL_DIR" ]]; then
+        if [[ -f "$STATE_FILE" ]]; then
+            warn "WakaTerm NG is already installed with state tracking."
+            ask_confirm_default_yes "Do you want to reinstall (this will preserve your logs)? (Y/n)"
+            if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
+                log "Installation cancelled. Use '$0 upgrade' to update an existing installation."
+                exit 0
+            fi
+            log "Performing clean reinstallation..."
+            # Run uninstall first, then continue with installation
+            uninstall
+        else
+            warn "Found existing installation directory without state tracking."
+            ask_confirm_default_yes "Do you want to remove it and install fresh? (Y/n)"
+            if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
+                log "Installation cancelled."
+                exit 0
+            fi
+            # Remove existing directory
+            rm -rf "$INSTALL_DIR"
+        fi
+    fi
     
-    # Create install directory and track it
-    track_mkdir "$INSTALL_DIR"
-    
-    # Clone files
+    # Clone files first (don't create directory beforehand!)
     git clone https://github.com/QinCai-rui/WakaTerm-NG.git "$INSTALL_DIR" || {
         error "Failed to clone WakaTerm NG repository. If you have already installed it, consider running '$0 upgrade' instead."
         exit 1
     }
+    
+    # NOW initialise state tracking after successful clone
+    init_state_file
+    
+    # Track the install directory creation
+    track_state "directories_created" "$INSTALL_DIR"
     
     # Track all files in the cloned directory
     find "$INSTALL_DIR" -type f | while read -r file; do
