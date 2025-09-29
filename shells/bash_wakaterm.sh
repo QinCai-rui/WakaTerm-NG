@@ -108,4 +108,5 @@ if [[ -n "$BASH_VERSION" ]]; then
     # Set up the DEBUG trap and PROMPT_COMMAND
     trap 'wakaterm_debug_trap' DEBUG
     PROMPT_COMMAND="wakaterm_prompt_command"
+    export WAKATERM_BASH_LOADED=1
 fi

@@ -167,6 +167,9 @@ EOF
 main() {
     local action="${1:-install}"
     
+    # Load only the modules needed for this specific action
+    load_modules_for_action "$action"
+    
     case "$action" in
         "install")
             echo "=== WakaTerm NG Installation ==="
