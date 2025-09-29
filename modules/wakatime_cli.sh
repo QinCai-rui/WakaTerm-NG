@@ -94,7 +94,12 @@ install_wakatime_cli() {
             # If archive, extract and pick binary
             if file --brief --mime-type "$wakatime_cli.tmp" | grep -q "application/x-gzip\|application/gzip"; then
                 mkdir -p "$wakatime_dir/tmp_extract"
-                tar -xzf "$wakatime_cli.tmp" -C "$wakatime_dir/tmp_extract" || true
+                if ! tar -xzf "$wakatime_cli.tmp" -C "$wakatime_dir/tmp_extract"; then
+                    error "Failed to extract wakatime-cli tarball. Aborting installation."
+                    rm -rf "$wakatime_dir/tmp_extract"
+                    rm -f "$wakatime_cli.tmp"
+                    return 1
+                fi
                 # find executable named wakatime-cli
                 find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli*" -perm /u+x -print -exec mv {} "$wakatime_cli" \; -quit || true
                 rm -rf "$wakatime_dir/tmp_extract"
@@ -140,7 +145,12 @@ install_wakatime_cli() {
             # If archive, extract and pick binary
             if file --brief --mime-type "$wakatime_cli.tmp" | grep -q "application/x-gzip\|application/gzip"; then
                 mkdir -p "$wakatime_dir/tmp_extract"
-                tar -xzf "$wakatime_cli.tmp" -C "$wakatime_dir/tmp_extract" || true
+                if ! tar -xzf "$wakatime_cli.tmp" -C "$wakatime_dir/tmp_extract"; then
+                    error "Failed to extract wakatime-cli tarball. Aborting installation."
+                    rm -rf "$wakatime_dir/tmp_extract"
+                    rm -f "$wakatime_cli.tmp"
+                    return 1
+                fi
                 find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli*" -perm /u+x -print -exec mv {} "$wakatime_cli" \; -quit || true
                 rm -rf "$wakatime_dir/tmp_extract"
                 rm -f "$wakatime_cli.tmp"
