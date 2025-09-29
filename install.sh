@@ -206,14 +206,14 @@ install_wakatime_cli() {
                 mkdir -p "$wakatime_dir/tmp_extract"
                 tar -xzf "$wakatime_cli.tmp" -C "$wakatime_dir/tmp_extract" || true
                 # find executable named wakatime-cli
-                find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli" -perm /u+x -print -exec mv {} "$wakatime_cli" \; || true
+                find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli*" -perm /u+x -print -exec mv {} "$wakatime_cli" \; -quit || true
                 rm -rf "$wakatime_dir/tmp_extract"
                 rm -f "$wakatime_cli.tmp"
             elif file --brief --mime-type "$wakatime_cli.tmp" | grep -q "application/zip"; then
                 mkdir -p "$wakatime_dir/tmp_extract"
                 if command_exists unzip; then
                     unzip -q "$wakatime_cli.tmp" -d "$wakatime_dir/tmp_extract"
-                    find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli" -perm /u+x -print -exec mv {} "$wakatime_cli" \; || true
+                    find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli*" -perm /u+x -print -exec mv {} "$wakatime_cli" \; -quit || true
                 fi
                 rm -rf "$wakatime_dir/tmp_extract"
                 rm -f "$wakatime_cli.tmp"
@@ -251,14 +251,14 @@ install_wakatime_cli() {
             if file --brief --mime-type "$wakatime_cli.tmp" | grep -q "application/x-gzip\|application/gzip"; then
                 mkdir -p "$wakatime_dir/tmp_extract"
                 tar -xzf "$wakatime_cli.tmp" -C "$wakatime_dir/tmp_extract" || true
-                find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli" -perm /u+x -print -exec mv {} "$wakatime_cli" \; || true
+                find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli*" -perm /u+x -print -exec mv {} "$wakatime_cli" \; -quit || true
                 rm -rf "$wakatime_dir/tmp_extract"
                 rm -f "$wakatime_cli.tmp"
             elif file --brief --mime-type "$wakatime_cli.tmp" | grep -q "application/zip"; then
                 mkdir -p "$wakatime_dir/tmp_extract"
                 if command_exists unzip; then
                     unzip -q "$wakatime_cli.tmp" -d "$wakatime_dir/tmp_extract"
-                    find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli" -perm /u+x -print -exec mv {} "$wakatime_cli" \; || true
+                    find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli*" -perm /u+x -print -exec mv {} "$wakatime_cli" \; -quit || true
                 fi
                 rm -rf "$wakatime_dir/tmp_extract"
                 rm -f "$wakatime_cli.tmp"
@@ -284,10 +284,20 @@ install_wakatime_cli() {
             return 0
         else
             error "wakatime-cli downloaded but not working properly"
+            error "File exists at: $wakatime_cli"
+            error "File info: $(ls -la "$wakatime_cli" 2>/dev/null || echo 'Could not stat file')"
+            error "Try running: $wakatime_cli --version"
             return 1
         fi
     else
         error "Failed to download wakatime-cli"
+        error "Expected file at: $wakatime_cli"
+        error "Contents of wakatime directory:"
+        if [[ -d "$wakatime_dir" ]]; then
+            ls -la "$wakatime_dir" || error "Could not list directory contents"
+        else
+            error "Wakatime directory does not exist: $wakatime_dir"
+        fi
         return 1
     fi
 }
