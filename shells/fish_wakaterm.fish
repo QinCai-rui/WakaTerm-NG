@@ -39,7 +39,7 @@ end
 # Hook into fish command execution
 # Check if wakaterm is already loaded to prevent double-loading
 if not set -q WAKATERM_FISH_LOADED
-    set -g WAKATERM_FISH_LOADED 1
+    set -gx WAKATERM_FISH_LOADED 1
     
     # Variables to track timing
     set -g WAKATERM_COMMAND_START_TIME ""
