@@ -132,6 +132,34 @@ install_wakatime_cli() {
     # Create wakatime directory if it doesn't exist
     mkdir -p "$wakatime_dir"
     
+    # Detect architecture and normalise to release asset naming (amd64, arm64, 386)
+    local arch_raw
+    # Allow user to override detection when needed (e.g. unusual CI or manual testing)
+    if [[ -n "${WAKATERM_ARCH:-}" ]]; then
+        arch_raw="${WAKATERM_ARCH}"
+    else
+        arch_raw=$(uname -m)
+    fi
+    local arch
+    case "$arch_raw" in
+        x86_64|amd64)
+            arch=amd64
+            ;;
+        aarch64|arm64)
+            arch=arm64
+            ;;
+        i386|i686)
+            arch=386
+            ;;
+        armv7l|armv7)
+            # There may not be an exact armv7 build; try arm64 or armv6 fallback
+            arch=armv6
+            ;;
+        *)
+            arch="$arch_raw"
+            ;;
+    esac
+
     case "$os" in
         "macos")
             # Check if Homebrew is available
@@ -148,26 +176,95 @@ install_wakatime_cli() {
                     fi
                 fi
             fi
-            # Fallback to direct download
-            log "Downloading wakatime-cli for macOS..."
+            # Try to pick the best asset from GitHub releases using API
+            local os_label="darwin"
+            local download_url=""
             if command_exists curl; then
-                curl -sSL "https://github.com/wakatime/wakatime-cli/releases/latest/download/wakatime-cli-darwin-amd64" -o "$wakatime_cli"
+                download_url=$(curl -s "https://api.github.com/repos/wakatime/wakatime-cli/releases/latest" \
+                    | grep -Eo '"browser_download_url":\s*"[^"]+"' \
+                    | sed -E 's/"browser_download_url":\s*"([^"]+)"/\1/' \
+                    | grep -i "${os_label}" \
+                    | grep -i "${arch}" \
+                    | head -n 1 || true)
+            fi
+            if [[ -z "$download_url" ]]; then
+                # Fallback to predictable path
+                local asset_name="wakatime-cli-darwin-${arch}"
+                download_url="https://github.com/wakatime/wakatime-cli/releases/latest/download/${asset_name}"
+            fi
+            log "Downloading wakatime-cli for macOS (${arch_raw} -> ${arch}) from ${download_url}..."
+            if command_exists curl; then
+                curl -sSL "$download_url" -o "$wakatime_cli.tmp"
             elif command_exists wget; then
-                wget -q "https://github.com/wakatime/wakatime-cli/releases/latest/download/wakatime-cli-darwin-amd64" -O "$wakatime_cli"
+                wget -q "$download_url" -O "$wakatime_cli.tmp"
             else
                 error "Neither curl nor wget found. Cannot download wakatime-cli."
                 return 1
             fi
+            # If archive, extract and pick binary
+            if file --brief --mime-type "$wakatime_cli.tmp" | grep -q "application/x-gzip\|application/gzip"; then
+                mkdir -p "$wakatime_dir/tmp_extract"
+                tar -xzf "$wakatime_cli.tmp" -C "$wakatime_dir/tmp_extract" || true
+                # find executable named wakatime-cli
+                find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli" -perm /u+x -print -exec mv {} "$wakatime_cli" \; || true
+                rm -rf "$wakatime_dir/tmp_extract"
+                rm -f "$wakatime_cli.tmp"
+            elif file --brief --mime-type "$wakatime_cli.tmp" | grep -q "application/zip"; then
+                mkdir -p "$wakatime_dir/tmp_extract"
+                if command_exists unzip; then
+                    unzip -q "$wakatime_cli.tmp" -d "$wakatime_dir/tmp_extract"
+                    find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli" -perm /u+x -print -exec mv {} "$wakatime_cli" \; || true
+                fi
+                rm -rf "$wakatime_dir/tmp_extract"
+                rm -f "$wakatime_cli.tmp"
+            else
+                # assume raw binary
+                mv "$wakatime_cli.tmp" "$wakatime_cli"
+            fi
             ;;
         "linux")
-            log "Downloading wakatime-cli for Linux..."
+            # Try to pick the best asset from GitHub releases using API
+            local os_label="linux"
+            local download_url=""
             if command_exists curl; then
-                curl -sSL "https://github.com/wakatime/wakatime-cli/releases/latest/download/wakatime-cli-linux-amd64" -o "$wakatime_cli"
+                download_url=$(curl -s "https://api.github.com/repos/wakatime/wakatime-cli/releases/latest" \
+                    | grep -Eo '"browser_download_url":\s*"[^"]+"' \
+                    | sed -E 's/"browser_download_url":\s*"([^"]+)"/\1/' \
+                    | grep -i "${os_label}" \
+                    | grep -i "${arch}" \
+                    | head -n 1 || true)
+            fi
+            if [[ -z "$download_url" ]]; then
+                local asset_name="wakatime-cli-linux-${arch}"
+                download_url="https://github.com/wakatime/wakatime-cli/releases/latest/download/${asset_name}"
+            fi
+            log "Downloading wakatime-cli for Linux (${arch_raw} -> ${arch}) from ${download_url}..."
+            if command_exists curl; then
+                curl -sSL "$download_url" -o "$wakatime_cli.tmp"
             elif command_exists wget; then
-                wget -q "https://github.com/wakatime/wakatime-cli/releases/latest/download/wakatime-cli-linux-amd64" -O "$wakatime_cli"
+                wget -q "$download_url" -O "$wakatime_cli.tmp"
             else
                 error "Neither curl nor wget found. Cannot download wakatime-cli."
                 return 1
+            fi
+            # If archive, extract and pick binary
+            if file --brief --mime-type "$wakatime_cli.tmp" | grep -q "application/x-gzip\|application/gzip"; then
+                mkdir -p "$wakatime_dir/tmp_extract"
+                tar -xzf "$wakatime_cli.tmp" -C "$wakatime_dir/tmp_extract" || true
+                find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli" -perm /u+x -print -exec mv {} "$wakatime_cli" \; || true
+                rm -rf "$wakatime_dir/tmp_extract"
+                rm -f "$wakatime_cli.tmp"
+            elif file --brief --mime-type "$wakatime_cli.tmp" | grep -q "application/zip"; then
+                mkdir -p "$wakatime_dir/tmp_extract"
+                if command_exists unzip; then
+                    unzip -q "$wakatime_cli.tmp" -d "$wakatime_dir/tmp_extract"
+                    find "$wakatime_dir/tmp_extract" -type f -name "wakatime-cli" -perm /u+x -print -exec mv {} "$wakatime_cli" \; || true
+                fi
+                rm -rf "$wakatime_dir/tmp_extract"
+                rm -f "$wakatime_cli.tmp"
+            else
+                # assume raw binary
+                mv "$wakatime_cli.tmp" "$wakatime_cli"
             fi
             ;;
         *)
@@ -665,6 +762,7 @@ Examples:
 
 Environment:
     WAKATERM_AUTO_INSTALL=1   # same as -y, auto-accept prompts
+    WAKATERM_ARCH=<arch>      # override automatically-detected arch (amd64, arm64, 386, ...)
 
 EOF
 }
