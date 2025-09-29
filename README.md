@@ -31,7 +31,7 @@ WakaTerm NG is a terminal plugin that integrates with [WakaTime](https://wakatim
 
 ## Usage
 
-Once installed, your terminal activity will be tracked automatically. A `wakatermctl` command-line tool is planned for viewing stats right in the terminal in future releases.
+Once installed, your terminal activity will be tracked automatically. The `wakatermctl` command can be used to see your activity. Run `wakatermctl --help` for more options.
 
 ## License
 
