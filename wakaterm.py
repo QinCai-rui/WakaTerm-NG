@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional, List, Dict
 from datetime import datetime
 
+DEBUG_MODE = None
 
 class TerminalTracker:
     """Main terminal tracking class that logs to local files"""
@@ -32,11 +33,11 @@ class TerminalTracker:
                 fallback_dir.mkdir(parents=True, exist_ok=True)
                 self.log_dir = fallback_dir
                 # Write a warning to stderr ONLY if in debug mode
-                if os.getenv('WAKATERM_DEBUG') == '1':
+                if DEBUG_MODE:
                     print(f"Warning: Could not create {log_dir or '~/.local/share/wakaterm-logs'}, using {fallback_dir}", file=sys.stderr)
             except Exception:
                 # If even temp directory fails, can't log anything
-                if os.getenv('WAKATERM_DEBUG') == '1':
+                if DEBUG_MODE:
                     print(f"Error: Could not create any log directory. Original error: {e}", file=sys.stderr)
                 raise
         
@@ -292,7 +293,7 @@ def main():
     args = parser.parse_args()
     
     # Check for debug mode from environment variable as well
-    debug_mode = args.debug or os.environ.get('WAKATERM_DEBUG') == 1
+    DEBUG_MODE = args.debug or os.environ.get("WAKATERM_DEBUG", "").lower() in ("1", "true", "yes", "on")
     
     tracker = TerminalTracker(args.log_dir)
     
@@ -306,7 +307,7 @@ def main():
         sys.exit(1)
     
     command = ' '.join(args.command)
-    tracker.track_command(command, args.cwd, args.timestamp, args.duration, debug_mode)
+    tracker.track_command(command, args.cwd, args.timestamp, args.duration, DEBUG_MODE)
 
 
 if __name__ == '__main__':
