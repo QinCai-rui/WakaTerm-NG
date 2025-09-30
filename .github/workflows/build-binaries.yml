@@ -63,10 +63,19 @@ jobs:
       - name: Create release artifact
         run: |
           mkdir -p release
+          # Copy both binaries
           if [ "${{ matrix.os }}" = "windows" ]; then
-            cp binaries/wakaterm-${{ matrix.os }}-${{ matrix.arch }}.exe release/
+            cp binaries/wakaterm-${{ matrix.os }}-${{ matrix.arch }}.exe release/ 2>/dev/null || true
+            cp binaries/wakatermctl-${{ matrix.os }}-${{ matrix.arch }}.exe release/ 2>/dev/null || true
+            # Also copy distribution directories
+            cp -r binaries/wakaterm-dist release/ 2>/dev/null || true
+            cp -r binaries/wakatermctl-dist release/ 2>/dev/null || true
           else
-            cp binaries/wakaterm-${{ matrix.os }}-${{ matrix.arch }} release/
+            cp binaries/wakaterm-${{ matrix.os }}-${{ matrix.arch }} release/ 2>/dev/null || true
+            cp binaries/wakatermctl-${{ matrix.os }}-${{ matrix.arch }} release/ 2>/dev/null || true
+            # Also copy distribution directories
+            cp -r binaries/wakaterm-dist release/ 2>/dev/null || true  
+            cp -r binaries/wakatermctl-dist release/ 2>/dev/null || true
           fi
           cp README.md LICENSE release/
         shell: bash
