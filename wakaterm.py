@@ -183,6 +183,40 @@ class TerminalTracker:
         
         return language_map.get(cmd, 'Shell')
     
+    def _get_git_branch(self, cwd: str) -> Optional[str]:
+        """Get the current Git branch if in a Git repository"""
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:
+            pass
+        return None
+    
+    def _is_write_command(self, base_command: str) -> bool:
+        """Determine if a command is a write operation"""
+        write_commands = {
+            # File operations that modify files
+            'cp', 'mv', 'rm', 'mkdir', 'rmdir', 'touch', 'ln',
+            # Text editors
+            'vim', 'nvim', 'emacs', 'nano', 'code', 'subl',
+            # Archive operations
+            'tar', 'gzip', 'zip', 'unzip',
+            # Version control write operations
+            'git',  # Many git commands are writes (commit, push, etc.)
+            # Build and install operations
+            'make', 'cargo', 'npm', 'pip', 'poetry', 'composer',
+            # Database operations (often writes)
+            'mysql', 'psql', 'mongo', 'redis-cli'
+        }
+        return base_command in write_commands
     
     def get_base_command(self, command: str) -> str:
         """Extract the base command from a full command line"""
@@ -309,20 +343,36 @@ class TerminalTracker:
                 if debug:
                     print("WAKATERM DEBUG: wakatime-cli executable not found", file=sys.stderr)
                 return
-            
+
             # Use the existing create_activity_entry method to get all metadata!
             entry = self.create_activity_entry(command, cwd, timestamp, duration)
             
+            # Use a PROPER URL scheme for terminal activities (otherwise WakaTime ignore them)
+            # This is much cleaner and more descriptive than fake file paths
+            wakaterm_url = f"terminal://{entry['project']}/{entry['base_command']}"
+
             wakatime_args = [
                 wakatime_cli,
-                '--entity', entry['entity'],
-                '--entity-type', 'file',
+                '--entity', wakaterm_url,
+                '--entity-type', 'url',  # Use 'url' for custom wakaterm-ng:// scheme
                 '--project', entry['project'],
                 '--language', entry['language'],
                 '--time', str(entry['timestamp']),
-                '--plugin', entry['plugin']
+                '--plugin', entry['plugin'],
+                '--project-folder', cwd,  # Help with project detection
+                '--timeout', '30'  # Prevent hanging on network issues
             ]
             
+            # Add Git branch if  in a Git repository
+            git_branch = self._get_git_branch(cwd)
+            if git_branch:
+                wakatime_args.extend(['--alternate-branch', git_branch])
+            
+            # Mark write operations for certain commands
+            if self._is_write_command(entry['base_command']):
+                wakatime_args.append('--write')
+            
+            '''
             # Add category based on language
             if entry['language'] in ['Shell', 'Navigation', 'Text Processing', 'Package Manager', 'Documentation', 'Archive', 'File Operations', 'System Admin']:
                 wakatime_args.extend(['--category', 'debugging'])
@@ -332,7 +382,10 @@ class TerminalTracker:
                 wakatime_args.extend(['--category', 'building'])
             else:
                 wakatime_args.extend(['--category', 'coding'])
-            
+            '''
+
+            wakatime_args.extend(['--category', 'coding'])
+
             if debug:
                 print(f"WAKATERM DEBUG: Executing wakatime-cli command: {' '.join(wakatime_args)}", file=sys.stderr)
             
@@ -342,12 +395,17 @@ class TerminalTracker:
                 result = subprocess.run(
                     wakatime_args,
                     capture_output=True,
-                    text=True
+                    text=True,
+                    timeout=10  # Add timeout to prevent hanging
                 )
                 if result.returncode == 0:
-                    print(f"WAKATERM DEBUG: Successfully sent to WakaTime: {entry['entity']} (project: {entry['project']}, language: {entry['language']})", file=sys.stderr)
+                    print(f"WAKATERM DEBUG: WakaTime CLI exited successfully (code 0): {entry['entity']}", file=sys.stderr)
+                    if result.stdout.strip():
+                        print(f"WAKATERM DEBUG: WakaTime CLI stdout: {result.stdout}", file=sys.stderr)
+                    if result.stderr.strip():
+                        print(f"WAKATERM DEBUG: WakaTime CLI stderr: {result.stderr}", file=sys.stderr)
                 else:
-                    print(f"WAKATERM DEBUG: WakaTime CLI error (exit code {result.returncode}):", file=sys.stderr)
+                    print(f"WAKATERM DEBUG: WakaTime CLI FAILED with exit code {result.returncode}:", file=sys.stderr)
                     if result.stdout:
                         print(f"WAKATERM DEBUG: stdout: {result.stdout}", file=sys.stderr)
                     if result.stderr:
