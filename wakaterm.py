@@ -272,7 +272,7 @@ class TerminalTracker:
             "language": language,
             "entity": f"terminal://{project}/{base_cmd}#{entity_hash}",
             "duration": duration,
-            "plugin": "wakaterm-ng/1.4.0"
+            "plugin": "wakaterm-ng/2.0.0"
         }
     
     def _is_wakatime_available(self) -> bool:
