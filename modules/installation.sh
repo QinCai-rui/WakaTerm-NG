@@ -27,6 +27,19 @@ install_wakaterm() {
         fi
     fi
     
+    # Ensure wakaterm config directory exists
+    local config_dir="$HOME/.config/wakaterm"
+    if [[ ! -d "$config_dir" ]]; then
+        log "Creating config directory..."
+        if mkdir -p "$config_dir" 2>/dev/null; then
+            success "Created config directory at $config_dir"
+            track_state "directories_created" "$config_dir"
+        else
+            warn "Could not create config directory at $config_dir"
+            warn "WakaTerm will attempt to create it at runtime"
+        fi
+    fi
+    
     # Check for existing installation
     if [[ -d "$INSTALL_DIR" ]]; then
         if [[ -f "$STATE_FILE" ]]; then
