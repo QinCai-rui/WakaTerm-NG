@@ -22,6 +22,7 @@ readonly CONFIG_DIR="${HOME}/.config/wakaterm"
 PLATFORM=""
 ARCH=""
 TEMP_DIR=""
+INSTALL_TYPE="binary"  # Can be "binary" (Cython compiled) or "python" (raw Python)
 
 # Utility functions
 log_info() {
@@ -42,6 +43,34 @@ log_error() {
 
 log_step() {
     echo -e "${BOLD}🔄 $1${NC}"
+}
+
+# Ask user for installation type preference
+ask_installation_type() {
+    echo ""
+    log_info "Choose your installation type:"
+    echo "  1) Cython compiled binaries (recommended - faster performance, smaller size)"
+    echo "  2) Python source files (easier to modify, requires Python runtime)"
+    echo ""
+    
+    while true; do
+        read -p "Enter your choice (1-2) [default: 1]: " -r choice
+        case "${choice:-1}" in
+            1)
+                INSTALL_TYPE="binary"
+                log_info "Selected: Cython compiled binaries"
+                break
+                ;;
+            2)
+                INSTALL_TYPE="python"
+                log_info "Selected: Python source files"
+                break
+                ;;
+            *)
+                log_warning "Invalid choice. Please enter 1 or 2."
+                ;;
+        esac
+    done
 }
 
 # Platform detection
@@ -175,6 +204,74 @@ download_binaries() {
         log_warning "Only $success_count of ${#BINARIES[@]} binaries downloaded successfully"
         log_info "Continuing with available binaries..."
     fi
+}
+
+# Install Python source files directly
+install_python_source() {
+    log_step "Installing WakaTerm Python source files"
+    
+    # Check if Python is available
+    if ! command -v python3 >/dev/null 2>&1; then
+        log_error "Python 3 is required for Python source installation"
+        exit 1
+    fi
+    
+    # Check if git is available
+    if ! command -v git >/dev/null 2>&1; then
+        log_error "Git is required to download source files"
+        exit 1
+    fi
+    
+    # Clone repository to temporary directory
+    local temp_dir
+    temp_dir=$(mktemp -d)
+    cd "$temp_dir"
+    
+    log_info "Cloning repository..."
+    git clone "https://github.com/${GITHUB_REPO}.git" wakaterm
+    cd wakaterm
+    
+    # Create source installation directory
+    local source_dir="$HOME/.local/share/wakaterm-source"
+    mkdir -p "$source_dir"
+    
+    # Copy Python source files
+    log_info "Copying source files..."
+    cp wakaterm.py "$source_dir/"
+    cp wakaterm_minimal.py "$source_dir/" 2>/dev/null || true
+    cp ignore_filter.py "$source_dir/"
+    cp wakatermctl "$source_dir/"
+    
+    # Create wrapper scripts in install directory
+    local wakaterm_wrapper="$INSTALL_DIR/wakaterm"
+    local wakatermctl_wrapper="$INSTALL_DIR/wakatermctl"
+    
+    cat > "$wakaterm_wrapper" << EOF
+#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, os.path.expanduser('~/.local/share/wakaterm-source'))
+import wakaterm
+wakaterm.main()
+EOF
+    
+    cat > "$wakatermctl_wrapper" << EOF
+#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, os.path.expanduser('~/.local/share/wakaterm-source'))
+with open(os.path.expanduser('~/.local/share/wakaterm-source/wakatermctl'), 'r') as f:
+    exec(f.read())
+EOF
+    
+    chmod +x "$wakaterm_wrapper" "$wakatermctl_wrapper"
+    
+    # Clean up
+    cd /
+    rm -rf "$temp_dir"
+    
+    log_success "Python source installation completed"
+    TEMP_DIR=""  # Prevent cleanup of non-existent temp dir
 }
 
 # Build from source as fallback
@@ -324,11 +421,21 @@ main() {
     
     # Pre-installation checks
     check_existing_installation
+    
+    # Ask user for installation preference
+    ask_installation_type
+    
     setup_directories
     
-    # Download and install
-    download_binaries
-    install_binaries
+    # Install based on user choice
+    if [[ "$INSTALL_TYPE" == "python" ]]; then
+        install_python_source
+    else
+        # Download and install binaries (Cython compiled)
+        download_binaries
+        install_binaries
+    fi
+    
     verify_installation
     
     echo ""

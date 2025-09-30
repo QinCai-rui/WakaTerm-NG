@@ -19,6 +19,7 @@ fi
 INSTALL_DIR="$HOME/.local/share/wakaterm"
 WAKATIME_CONFIG="$HOME/.wakatime.cfg"
 STATE_FILE="$HOME/.local/share/wakaterm/.install_state.json"
+INSTALL_TYPE="binary"  # Can be "binary" (Cython compiled) or "python" (raw Python)
 
 # Global auto-yes control. Honour -y/--yes or WAKATERM_AUTO_INSTALL=1 env var.
 FORCE_YES=0
@@ -27,8 +28,48 @@ for arg in "$@"; do
         -y|--yes)
             FORCE_YES=1
             ;;
+        --python)
+            INSTALL_TYPE="python"
+            ;;
+        --binary|--cython)
+            INSTALL_TYPE="binary"
+            ;;
     esac
 done
+
+# Ask user for installation type preference (if not already set by command line)
+ask_installation_type() {
+    # Skip prompt if already set via command line or in non-interactive mode
+    if [[ "$FORCE_YES" == "1" || "$INSTALL_TYPE" != "binary" ]]; then
+        return 0
+    fi
+    
+    if [[ -t 0 ]]; then  # Check if stdin is a terminal (interactive)
+        printf "\n\033[0;34mChoose your installation type:\033[0m\n"
+        printf "  1) Cython compiled binaries (recommended - faster performance, smaller size)\n"
+        printf "  2) Python source files (easier to modify, requires Python runtime)\n"
+        printf "\n"
+        
+        while true; do
+            read -p "Enter your choice (1-2) [default: 1]: " -r choice
+            case "${choice:-1}" in
+                1)
+                    INSTALL_TYPE="binary"
+                    printf "\033[0;34mSelected: Cython compiled binaries\033[0m\n"
+                    break
+                    ;;
+                2)
+                    INSTALL_TYPE="python"
+                    printf "\033[0;34mSelected: Python source files\033[0m\n"
+                    break
+                    ;;
+                *)
+                    printf "\033[0;33mInvalid choice. Please enter 1 or 2.\033[0m\n"
+                    ;;
+            esac
+        done
+    fi
+}
 
 # Source all module files
 # User can override the GitHub raw base URL using GITHUB_RAW_BASE env var.
@@ -148,6 +189,8 @@ Options:
     status              Show installation status and tracked changes
     help                Show this help message
     -y, --yes           Automatically answer yes to prompts (non-interactive)
+    --python            Force Python source installation
+    --binary, --cython  Force Cython compiled binary installation (default)
 
 Examples:
     $0                              # Install with auto-detected shell
@@ -174,6 +217,7 @@ main() {
     case "$action" in
         "install")
             echo "=== WakaTerm NG Installation ==="
+            ask_installation_type
             check_dependencies
             check_wakatime_config
             install_wakaterm

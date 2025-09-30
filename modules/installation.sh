@@ -2,9 +2,140 @@
 # WakaTerm NG Installation Module
 # Contains main installation, uninstallation, and upgrade functions
 
-# Install wakaterm files
+# Install Python source files directly
+install_python_source() {
+    log "Installing WakaTerm NG Python source files..."
+    
+    # Check if Python is available
+    if ! command -v python3 >/dev/null 2>&1; then
+        error "Python 3 is required for Python source installation"
+        exit 1
+    fi
+    
+    # Check if git is available for source download
+    if ! command -v git >/dev/null 2>&1; then
+        warn "Git not found. Attempting to download individual source files..."
+        download_source_files_direct
+        return
+    fi
+    
+    # Create temporary directory for cloning
+    local temp_dir
+    temp_dir=$(mktemp -d) || {
+        error "Failed to create temporary directory"
+        exit 1
+    }
+    
+    (
+        cd "$temp_dir"
+        log "Downloading WakaTerm NG source code..."
+        
+        if git clone "https://github.com/QinCai-rui/WakaTerm-NG.git" wakaterm 2>/dev/null; then
+            cd wakaterm
+            
+            # Create source installation directory
+            local source_dir="$HOME/.local/share/wakaterm-source"
+            mkdir -p "$source_dir" || {
+                error "Failed to create source directory: $source_dir"
+                exit 1
+            }
+            
+            # Copy Python source files
+            log "Installing source files..."
+            cp wakaterm.py "$source_dir/" 2>/dev/null || {
+                error "Failed to copy wakaterm.py"
+                exit 1
+            }
+            cp wakaterm_minimal.py "$source_dir/" 2>/dev/null || true  # Optional file
+            cp ignore_filter.py "$source_dir/" 2>/dev/null || {
+                error "Failed to copy ignore_filter.py"
+                exit 1
+            }
+            cp wakatermctl "$source_dir/" 2>/dev/null || {
+                error "Failed to copy wakatermctl"
+                exit 1
+            }
+            
+            # Make sure install directory exists
+            mkdir -p "$INSTALL_DIR" || {
+                error "Failed to create install directory: $INSTALL_DIR"
+                exit 1
+            }
+            
+            # Create wrapper scripts
+            create_python_wrappers "$source_dir"
+            
+            success "Python source files installed successfully"
+        else
+            error "Failed to clone repository"
+            exit 1
+        fi
+    )
+    
+    # Clean up temp directory
+    rm -rf "$temp_dir" 2>/dev/null || true
+}
+
+# Create wrapper scripts for Python source installation
+create_python_wrappers() {
+    local source_dir="$1"
+    
+    # Create wakaterm wrapper
+    local wakaterm_wrapper="$INSTALL_DIR/wakaterm"
+    cat > "$wakaterm_wrapper" << EOF
+#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, os.path.expanduser('$source_dir'))
+try:
+    import wakaterm
+    wakaterm.main()
+except ImportError as e:
+    print(f"Error: Could not import wakaterm module: {e}", file=sys.stderr)
+    print(f"Make sure Python source files are installed in: $source_dir", file=sys.stderr)
+    sys.exit(1)
+EOF
+    chmod +x "$wakaterm_wrapper" || {
+        error "Failed to make wakaterm wrapper executable"
+        exit 1
+    }
+    
+    # Create wakatermctl wrapper
+    local wakatermctl_wrapper="$INSTALL_DIR/wakatermctl"
+    cat > "$wakatermctl_wrapper" << EOF
+#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, os.path.expanduser('$source_dir'))
+try:
+    with open(os.path.expanduser('$source_dir/wakatermctl'), 'r') as f:
+        exec(f.read())
+except FileNotFoundError:
+    print(f"Error: wakatermctl script not found in: $source_dir", file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f"Error executing wakatermctl: {e}", file=sys.stderr)
+    sys.exit(1)
+EOF
+    chmod +x "$wakatermctl_wrapper" || {
+        error "Failed to make wakatermctl wrapper executable"
+        exit 1
+    }
+    
+    # Track installation for state management
+    track_state "install_type" "python_source"
+    track_state "source_directory" "$source_dir"
+    track_state "files_created" "$wakaterm_wrapper,$wakatermctl_wrapper"
+}
+
+# Install wakaterm files (binary or source based on INSTALL_TYPE)
 install_wakaterm() {
-    log "Installing WakaTerm NG..."
+    if [[ "${INSTALL_TYPE:-binary}" == "python" ]]; then
+        install_python_source
+        return
+    fi
+    
+    log "Installing WakaTerm NG binaries..."
     
     # Migrate existing logs to new location if needed
     local old_logs_dir="$HOME/.local/share/wakaterm/logs"
