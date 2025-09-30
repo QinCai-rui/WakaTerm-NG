@@ -1,6 +1,6 @@
 #!/bin/bash
 # WakaTerm NG Binary Installer
-# Automatically detects platform and installs the appropriate binary
+# Automatically detects platform and installs the appropriate binaries
 
 set -euo pipefail
 
@@ -15,14 +15,13 @@ readonly NC='\033[0m' # No Color
 # Configuration
 readonly GITHUB_REPO="QinCai-rui/WakaTerm-NG"
 readonly INSTALL_DIR="${HOME}/.local/bin"
-readonly BINARY_NAME="wakaterm"
+readonly BINARIES=("wakaterm" "wakatermctl")
 readonly CONFIG_DIR="${HOME}/.config/wakaterm"
 
 # Global variables
 PLATFORM=""
 ARCH=""
-DOWNLOAD_URL=""
-TEMP_FILE=""
+TEMP_DIR=""
 
 # Utility functions
 log_info() {
@@ -95,21 +94,24 @@ detect_architecture() {
 
 # Check if binary already exists
 check_existing_installation() {
-    if command -v wakaterm >/dev/null 2>&1; then
-        local existing_path
-        existing_path=$(which wakaterm)
-        log_warning "WakaTerm is already installed at: $existing_path"
-        
-        if [[ "$existing_path" == "$INSTALL_DIR/$BINARY_NAME" ]]; then
-            read -p "Do you want to upgrade the existing installation? (y/N): " -r
-            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                log_info "Installation cancelled."
-                exit 0
+    for binary_name in "${BINARIES[@]}"; do
+        if command -v "$binary_name" >/dev/null 2>&1; then
+            local existing_path
+            existing_path=$(which "$binary_name")
+            log_warning "$binary_name is already installed at: $existing_path"
+            
+            if [[ "$existing_path" == "$INSTALL_DIR/$binary_name" ]]; then
+                read -p "Do you want to upgrade the existing installation? (y/N): " -r
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    log_info "Installation cancelled."
+                    exit 0
+                fi
+                break
+            else
+                log_warning "Found $binary_name in different location. Continuing with installation to $INSTALL_DIR"
             fi
-        else
-            log_warning "Found WakaTerm in different location. Continuing with installation to $INSTALL_DIR"
         fi
-    fi
+    done
 }
 
 # Create necessary directories
@@ -122,46 +124,56 @@ setup_directories() {
     log_success "Directories created"
 }
 
-# Download the binary
-download_binary() {
-    log_step "Downloading WakaTerm binary for $PLATFORM-$ARCH"
+# Download the binaries
+download_binaries() {
+    log_step "Downloading WakaTerm binaries for $PLATFORM-$ARCH"
     
-    # Determine binary filename
-    local binary_filename="wakaterm-$PLATFORM-$ARCH"
-    if [[ "$PLATFORM" == "windows" ]]; then
-        binary_filename="${binary_filename}.exe"
-    fi
+    # Create temporary directory
+    TEMP_DIR=$(mktemp -d)
     
-    # Construct download URL
-    DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/${binary_filename}"
-    TEMP_FILE="/tmp/${binary_filename}"
+    local success_count=0
     
-    log_info "Download URL: $DOWNLOAD_URL"
-    
-    # Download using curl or wget
-    if command -v curl >/dev/null 2>&1; then
-        if curl -fsSL -o "$TEMP_FILE" "$DOWNLOAD_URL"; then
-            log_success "Binary downloaded successfully"
-        else
-            log_error "Failed to download binary with curl"
-            log_info "Trying to build from source instead..."
-            build_from_source
-            return
+    for binary_name in "${BINARIES[@]}"; do
+        # Determine binary filename
+        local binary_filename="${binary_name}-$PLATFORM-$ARCH"
+        if [[ "$PLATFORM" == "windows" ]]; then
+            binary_filename="${binary_filename}.exe"
         fi
-    elif command -v wget >/dev/null 2>&1; then
-        if wget -q -O "$TEMP_FILE" "$DOWNLOAD_URL"; then
-            log_success "Binary downloaded successfully"
+        
+        # Construct download URL
+        local download_url="https://github.com/${GITHUB_REPO}/releases/latest/download/${binary_filename}"
+        local temp_file="$TEMP_DIR/${binary_filename}"
+        
+        log_info "Downloading $binary_name: $download_url"
+        
+        # Download using curl or wget
+        if command -v curl >/dev/null 2>&1; then
+            if curl -fsSL -o "$temp_file" "$download_url"; then
+                log_success "$binary_name downloaded successfully"
+                ((success_count++))
+            else
+                log_error "Failed to download $binary_name with curl"
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if wget -q -O "$temp_file" "$download_url"; then
+                log_success "$binary_name downloaded successfully" 
+                ((success_count++))
+            else
+                log_error "Failed to download $binary_name with wget"
+            fi
         else
-            log_error "Failed to download binary with wget"
-            log_info "Trying to build from source instead..."
-            build_from_source
-            return
+            log_error "Neither curl nor wget found"
+            break
         fi
-    else
-        log_error "Neither curl nor wget found"
+    done
+    
+    if [[ $success_count -eq 0 ]]; then
         log_info "Trying to build from source instead..."
         build_from_source
         return
+    elif [[ $success_count -lt ${#BINARIES[@]} ]]; then
+        log_warning "Only $success_count of ${#BINARIES[@]} binaries downloaded successfully"
+        log_info "Continuing with available binaries..."
     fi
 }
 
@@ -213,33 +225,66 @@ build_from_source() {
     fi
 }
 
-# Install the binary
-install_binary() {
-    log_step "Installing WakaTerm binary"
+# Install the binaries
+install_binaries() {
+    log_step "Installing WakaTerm binaries"
     
-    local install_path="$INSTALL_DIR/$BINARY_NAME"
-    if [[ "$PLATFORM" == "windows" ]]; then
-        install_path="${install_path}.exe"
+    local installed_count=0
+    
+    for binary_name in "${BINARIES[@]}"; do
+        local binary_filename="${binary_name}-$PLATFORM-$ARCH"
+        if [[ "$PLATFORM" == "windows" ]]; then
+            binary_filename="${binary_filename}.exe"
+        fi
+        
+        local temp_file="$TEMP_DIR/${binary_filename}"
+        
+        if [[ ! -f "$temp_file" ]]; then
+            log_warning "$binary_name binary not found, skipping"
+            continue
+        fi
+        
+        local install_path="$INSTALL_DIR/$binary_name"
+        if [[ "$PLATFORM" == "windows" ]]; then
+            install_path="${install_path}.exe"
+        fi
+        
+        # Copy binary to install directory
+        cp "$temp_file" "$install_path"
+        chmod +x "$install_path"
+        
+        log_success "$binary_name installed to: $install_path"
+        ((installed_count++))
+    done
+    
+    if [[ $installed_count -eq 0 ]]; then
+        log_error "No binaries were installed successfully"
+        exit 1
+    else
+        log_success "$installed_count of ${#BINARIES[@]} binaries installed successfully"
     fi
-    
-    # Copy binary to install directory
-    cp "$TEMP_FILE" "$install_path"
-    chmod +x "$install_path"
-    
-    log_success "WakaTerm installed to: $install_path"
 }
 
 # Verify installation
 verify_installation() {
     log_step "Verifying installation"
     
-    local install_path="$INSTALL_DIR/$BINARY_NAME"
+    local verified_count=0
     
-    # Test if binary works
-    if "$install_path" --help >/dev/null 2>&1; then
-        log_success "Installation verified successfully"
-    else
-        log_error "Installation verification failed"
+    for binary_name in "${BINARIES[@]}"; do
+        local install_path="$INSTALL_DIR/$binary_name"
+        
+        # Test if binary works
+        if "$install_path" --help >/dev/null 2>&1; then
+            log_success "$binary_name installation verified"
+            ((verified_count++))
+        else
+            log_warning "$binary_name installation verification failed"
+        fi
+    done
+    
+    if [[ $verified_count -eq 0 ]]; then
+        log_error "No binaries passed verification"
         exit 1
     fi
     
@@ -250,16 +295,16 @@ verify_installation() {
         log_info "Add the following line to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
         echo -e "${BOLD}export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
         echo ""
-        log_info "Or run wakaterm directly: $install_path"
+        log_info "Or run binaries directly from: $INSTALL_DIR"
     else
-        log_info "You can now run: wakaterm --help"
+        log_info "You can now run: wakaterm --help and wakatermctl --help"
     fi
 }
 
 # Cleanup temporary files
 cleanup() {
-    if [[ -n "${TEMP_FILE:-}" && -f "$TEMP_FILE" ]]; then
-        rm -f "$TEMP_FILE"
+    if [[ -n "${TEMP_DIR:-}" && -d "$TEMP_DIR" ]]; then
+        rm -rf "$TEMP_DIR"
     fi
 }
 
@@ -282,8 +327,8 @@ main() {
     setup_directories
     
     # Download and install
-    download_binary
-    install_binary
+    download_binaries
+    install_binaries
     verify_installation
     
     echo ""
@@ -291,8 +336,10 @@ main() {
     echo ""
     log_info "Next steps:"
     echo "  1. Configure WakaTime: wakaterm --help"
-    echo "  2. Set up shell integration (see README.md)"
-    echo "  3. Start tracking your terminal activity!"
+    echo "  2. View statistics: wakatermctl stats"
+    echo "  3. Manage ignore patterns: wakatermctl ignore --help"
+    echo "  4. Set up shell integration (see README.md)"
+    echo "  5. Start tracking your terminal activity!"
     echo ""
 }
 
