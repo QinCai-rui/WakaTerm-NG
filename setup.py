@@ -8,17 +8,20 @@ from setuptools import setup, Extension
 from Cython.Build import cythonize
 import sys
 
+# Define platform-specific compiler flags
+extra_compile_args = ["-O3", "-march=native"] if sys.platform != "win32" else ["/O2"]
+
 # Define extensions to compile
 extensions = [
     Extension(
         "wakaterm",
         ["wakaterm.py"],
-        extra_compile_args=["-O3", "-march=native"] if sys.platform != "win32" else ["/O2"],
+        extra_compile_args=extra_compile_args,
     ),
     Extension(
         "ignore_filter",
         ["ignore_filter.py"],
-        extra_compile_args=["-O3", "-march=native"] if sys.platform != "win32" else ["/O2"],
+        extra_compile_args=extra_compile_args,
     ),
 ]
 

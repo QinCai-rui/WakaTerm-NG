@@ -194,7 +194,7 @@ wakaterm.main()
             if self.current_platform == 'windows':
                 wakatermctl_bin = wakatermctl_bin.with_suffix('.exe')
                 wrapper_content = f"""@echo off
-python -c "import sys; sys.path.insert(0, '%~dp0wakaterm-dist'); exec(open('%~dp0wakaterm-dist\\wakatermctl').read())" %*
+python -c "import sys; sys.path.insert(0, '%~dp0wakaterm-dist'); import wakatermctl; wakatermctl.main()" %*
 """
             else:
                 wrapper_content = f"""#!/usr/bin/env python3
