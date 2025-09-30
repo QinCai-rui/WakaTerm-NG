@@ -55,6 +55,16 @@ class WakatermBuilder:
         else:
             return machine
     
+    def _get_dir_size(self, path: Path) -> int:
+        """Get total size of directory in bytes"""
+        total_size = 0
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                if not os.path.islink(fp):
+                    total_size += os.path.getsize(fp)
+        return total_size
+    
     def _run_command(self, cmd: List[str], description: str) -> bool:
         """Run a command and handle errors"""
         print(f"🔄 {description}...")
@@ -96,65 +106,123 @@ class WakatermBuilder:
     
     def build_binary(self, optimize: bool = True) -> Optional[Path]:
         """Build the binary for the current platform"""
-        print(f"🚀 Building WakaTerm binary for {self.current_platform}-{self.current_arch}...")
+        print(f"🚀 Building WakaTerm binaries for {self.current_platform}-{self.current_arch}...")
         
-        # Prepare PyInstaller command
-        cmd = [
-            sys.executable, '-m', 'PyInstaller',
-            '--clean',  # Clean PyInstaller cache
-            '--noconfirm',  # Overwrite output directory
-        ]
+        # Build both wakaterm and wakatermctl
+        binaries_built = []
         
-        # Use spec file which already has optimization settings
-        cmd.append('wakaterm.spec')
+        for spec_name, binary_name in [('wakaterm-fast.spec', 'wakaterm'), ('wakatermctl-fast.spec', 'wakatermctl')]:
+            print(f"  Building {binary_name}...")
+            
+            # Prepare PyInstaller command
+            cmd = [
+                sys.executable, '-m', 'PyInstaller',
+                '--clean',  # Clean PyInstaller cache
+                '--noconfirm',  # Overwrite output directory
+                spec_name
+            ]
+            
+            # Build the binary
+            if not self._run_command(cmd, f"Building {binary_name}"):
+                print(f"❌ Failed to build {binary_name}")
+                continue
+            
+            # Find the created binary directory
+            binary_dir = self.dist_dir / binary_name
+            if not binary_dir.exists():
+                print(f"❌ Binary directory not found at {binary_dir}")
+                continue
+            
+            # Find the actual executable
+            binary_exe = binary_dir / binary_name
+            if self.current_platform == 'windows':
+                binary_exe = binary_dir / f"{binary_name}.exe"
+            
+            if not binary_exe.exists():
+                print(f"❌ Binary executable not found at {binary_exe}")
+                continue
+            
+            # Move to binaries directory with platform suffix
+            final_name = f"{binary_name}-{self.current_platform}-{self.current_arch}"
+            if self.current_platform == 'windows':
+                final_name += '.exe'
+            
+            final_binary = self.binary_dir / final_name
+            
+            # Create a wrapper script that calls the binary in the directory
+            wrapper_content = f"""#!/bin/bash
+# WakaTerm NG Binary Wrapper
+DIR="$( cd "$( dirname "${{BASH_SOURCE[0]}}" )" && pwd )"
+exec "$DIR/{binary_name}-dist/{binary_name}" "$@"
+"""
+            
+            # Copy the entire distribution directory
+            import shutil
+            dist_target = self.binary_dir / f"{binary_name}-dist"
+            if dist_target.exists():
+                shutil.rmtree(dist_target)
+            shutil.copytree(binary_dir, dist_target)
+            
+            # Create wrapper script (for Unix-like systems)
+            if self.current_platform in ['linux', 'macos']:
+                with open(final_binary, 'w') as f:
+                    f.write(wrapper_content)
+                os.chmod(final_binary, 0o755)
+            else:
+                # For Windows, just copy the exe
+                shutil.copy2(binary_exe, final_binary)
+            
+            print(f"✅ {binary_name} binary created: {final_binary}")
+            print(f"📊 Distribution size: {self._get_dir_size(dist_target) / 1024 / 1024:.1f} MB")
+            
+            binaries_built.append(final_binary)
         
-        # Build the binary
-        if not self._run_command(cmd, f"Building {self.current_platform} binary"):
-            return None
-        
-        # Find the created binary
-        binary_name = 'wakaterm'
-        if self.current_platform == 'windows':
-            binary_name += '.exe'
-        
-        created_binary = self.dist_dir / binary_name
-        if not created_binary.exists():
-            print(f"❌ Binary not found at {created_binary}")
-            return None
-        
-        # Move to binaries directory with platform suffix
-        final_name = f"wakaterm-{self.current_platform}-{self.current_arch}"
-        if self.current_platform == 'windows':
-            final_name += '.exe'
-        
-        final_binary = self.binary_dir / final_name
-        shutil.move(str(created_binary), str(final_binary))
-        
-        # Set executable permissions on Unix systems
-        if self.current_platform in ['linux', 'macos']:
-            os.chmod(final_binary, 0o755)
-        
-        print(f"✅ Binary created: {final_binary}")
-        print(f"📊 Binary size: {final_binary.stat().st_size / 1024 / 1024:.1f} MB")
-        
-        return final_binary
+        return binaries_built[0] if binaries_built else None
     
     def test_binary(self, binary_path: Path) -> bool:
         """Test the compiled binary"""
-        print(f"🧪 Testing binary: {binary_path.name}")
+        print(f"🧪 Testing binaries...")
         
-        tests = [
-            ([str(binary_path), '--help'], "Help output"),
-            ([str(binary_path), '--debug', 'test_command'], "Debug tracking"),
-            ([str(binary_path), '--cleanup'], "Cleanup function"),
-        ]
+        # Test both wakaterm and wakatermctl if they exist
+        test_results = []
         
-        for cmd, description in tests:
-            if not self._run_command(cmd, f"Testing {description}"):
-                return False
+        for binary_name in ['wakaterm', 'wakatermctl']:
+            binary_file = self.binary_dir / f"{binary_name}-{self.current_platform}-{self.current_arch}"
+            if self.current_platform == 'windows':
+                binary_file = self.binary_dir / f"{binary_name}-{self.current_platform}-{self.current_arch}.exe"
+            
+            if not binary_file.exists():
+                print(f"⚠️  {binary_name} binary not found, skipping test")
+                continue
+                
+            print(f"🧪 Testing {binary_name} binary")
+            
+            if binary_name == 'wakaterm':
+                tests = [
+                    ([str(binary_file), '--help'], "Help output"),
+                    ([str(binary_file), '--debug', 'test_command'], "Debug tracking"),
+                    ([str(binary_file), '--cleanup'], "Cleanup function"),
+                ]
+            else:  # wakatermctl
+                tests = [
+                    ([str(binary_file), '--help'], "Help output"),
+                    ([str(binary_file), 'stats', '--help'], "Stats help"),
+                ]
+            
+            binary_passed = True
+            for cmd, description in tests:
+                if not self._run_command(cmd, f"Testing {description}"):
+                    binary_passed = False
+                    break
+            
+            if binary_passed:
+                print(f"✅ {binary_name} tests passed!")
+                test_results.append(True)
+            else:
+                print(f"❌ {binary_name} tests failed!")
+                test_results.append(False)
         
-        print("✅ All tests passed!")
-        return True
+        return all(test_results) if test_results else False
     
     def clean_build_artifacts(self):
         """Clean build artifacts"""

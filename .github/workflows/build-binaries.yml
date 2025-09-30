@@ -68,7 +68,7 @@ jobs:
           else
             cp binaries/wakaterm-${{ matrix.os }}-${{ matrix.arch }} release/
           fi
-          cp README.md PERFORMANCE.md LICENSE release/
+          cp README.md LICENSE release/
         shell: bash
 
       - name: Upload artifacts

@@ -203,8 +203,9 @@ build_from_source() {
         binary_pattern="${binary_pattern}.exe"
     fi
     
-    if ls $binary_pattern 1> /dev/null 2>&1; then
-        TEMP_FILE="$temp_dir/wakaterm/$(ls $binary_pattern | head -1)"
+    if compgen -G "$binary_pattern" > /dev/null; then
+        local files=($binary_pattern)
+        TEMP_FILE="$temp_dir/wakaterm/${files[0]}"
         log_success "Binary built successfully"
     else
         log_error "Failed to build binary"
