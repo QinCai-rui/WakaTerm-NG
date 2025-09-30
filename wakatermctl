@@ -743,7 +743,7 @@ def handle_ignore_commands(args, use_colors: bool):
             print(f"{info_color}No ignore patterns configured{reset_color}")
             
     elif args.ignore_action == "test":
-        test_command = getattr(args, 'test_command', getattr(args, 'command', None))
+        test_command = getattr(args, 'test_command', None)
         if ignore_filter.should_ignore(test_command):
             warn_color = Colors.RED if use_colors else ""
             reset_color = Colors.RESET if use_colors else ""
@@ -827,8 +827,15 @@ Examples:
         """
     )
     
-    # Create subparsers for stats and ignore commands
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    # Add global arguments
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable colored output"
+    )
+    
+        # Create subparsers for stats and ignore commands
+    subparsers = parser.add_subparsers(dest="subcommand", help="Available commands")
     
     # Stats subparser (default behavior)
     stats_parser = subparsers.add_parser(
@@ -902,13 +909,6 @@ Examples:
         help="Export data in specified format"
     )
     
-    # Add common arguments to main parser
-    parser.add_argument(
-        "--no-color",
-        action="store_true",
-        help="Disable colored output"
-    )
-    
     # Ignore patterns subparser
     ignore_parser = subparsers.add_parser("ignore", help="Manage command ignore patterns")
     ignore_subparsers = ignore_parser.add_subparsers(dest="ignore_action", help="Ignore pattern actions")
@@ -926,7 +926,7 @@ Examples:
     
     # Test pattern
     test_parser = ignore_subparsers.add_parser("test", help="Test if a command would be ignored")
-    test_parser.add_argument("command", help="Command to test")
+    test_parser.add_argument("test_command", help="Command to test")
     
     # Edit patterns file
     edit_parser = ignore_subparsers.add_parser("edit", help="Open ignore patterns file in editor")
@@ -935,88 +935,32 @@ Examples:
     clear_parser = ignore_subparsers.add_parser("clear", help="Clear all ignore patterns")
     clear_parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
     
+    # Handle case where no arguments are provided - default to stats today
     if len(sys.argv) == 1:
-        # No arguments - show help
-        parser.print_help()
+        # Default to 'stats today' when no arguments provided
+        sys.argv.extend(['stats', 'today'])
+    
+    # Parse arguments using the configured parser
+    try:
+        args = parser.parse_args()
+    except SystemExit:
+        # argparse calls sys.exit on error, let it handle help and errors
         return
-    elif len(sys.argv) >= 2 and sys.argv[1] == "stats":
-        # Stats command - parse the rest
-        args = argparse.Namespace()
-        args.command = "stats"
-        
-        # Parse stats-specific arguments
-        stats_parser = argparse.ArgumentParser()
-        stats_parser.add_argument("period", nargs="?", default="today", 
-                                 choices=["today", "yesterday", "last_7_days", "last_30_days", "last_6_months", "last_year"])
-        stats_parser.add_argument("--json", action="store_true")
-        stats_parser.add_argument("--no-color", action="store_true")
-        stats_parser.add_argument("--log-dir")
-        stats_parser.add_argument("--debug", action="store_true")
-        stats_parser.add_argument("--project")
-        stats_parser.add_argument("--language")
-        stats_parser.add_argument("--command")
-        stats_parser.add_argument("--min-time", type=int)
-        stats_parser.add_argument("--summary", action="store_true")
-        stats_parser.add_argument("--export", choices=["csv", "json", "markdown"])
-        
-        stats_args = stats_parser.parse_args(sys.argv[2:])  # Skip 'wakatermctl' and 'stats'
-        
-        # Copy stats args to main args
-        for key, value in vars(stats_args).items():
-            setattr(args, key, value)
-            
-    elif len(sys.argv) >= 2 and sys.argv[1] == "ignore":
-        # Handle ignore commands manually
-        args = argparse.Namespace()
-        args.command = "ignore"
-        args.no_color = "--no-color" in sys.argv
-        
-        if len(sys.argv) >= 3:
-            args.ignore_action = sys.argv[2]
-            if args.ignore_action == "add":
-                if len(sys.argv) >= 4:
-                    args.pattern = sys.argv[3]
-                else:
-                    print("Error: 'add' requires a pattern argument", file=sys.stderr)
-                    print("Usage: wakatermctl ignore add <pattern>", file=sys.stderr)
-                    return
-            elif args.ignore_action == "remove":
-                if len(sys.argv) >= 4:
-                    args.pattern = sys.argv[3]
-                else:
-                    print("Error: 'remove' requires a pattern argument", file=sys.stderr)
-                    print("Usage: wakatermctl ignore remove <pattern>", file=sys.stderr)
-                    return
-            elif args.ignore_action == "test":
-                if len(sys.argv) >= 4:
-                    args.test_command = sys.argv[3]
-                else:
-                    print("Error: 'test' requires a command argument", file=sys.stderr)
-                    print("Usage: wakatermctl ignore test <command>", file=sys.stderr)
-                    return
-            elif args.ignore_action == "clear":
-                args.yes = "--yes" in sys.argv
-            elif args.ignore_action in ["list", "edit"]:
-                # These don't need additional arguments
-                pass
-            else:
-                print(f"Error: Unknown ignore action '{args.ignore_action}'", file=sys.stderr)
-                print("Valid actions: add, remove, list, test, edit, clear", file=sys.stderr)
-                return
-        else:
-            print("Usage: wakatermctl ignore {add,remove,list,test,edit,clear} ...", file=sys.stderr)
-            return
-    else:
-        # Unknown command or help
-        parser.print_help()
-        return
+    
+    # If no command specified but we have args, default to stats
+    if not hasattr(args, 'subcommand') or args.subcommand is None:
+        args.subcommand = 'stats'
+        if not hasattr(args, 'period'):
+            args.period = 'today'
+    
+
     
     # Disable colors if requested or if not in a terminal
     use_colors = not args.no_color and sys.stdout.isatty()
     
     try:
         # Handle ignore pattern management
-        if args.command == "ignore":
+        if args.subcommand == "ignore":
             handle_ignore_commands(args, use_colors)
             return
             
