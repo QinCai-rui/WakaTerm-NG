@@ -16,35 +16,106 @@
 - **Multi-Shell Support**: Works with Bash, Zsh, and Fish shells
 - **Rich Analytics**: Built-in statistics viewer with `wakatermctl` command
 - **Project Detection**: Smart project identification using common indicators (`.git`, `package.json`, etc.)
-- **Performance Optimised**: Lightweight background tracking with minimal shell overhead (will compile to binary in future; python too slow)
+- **Performance Optimised**: Available as both Python script and compiled binary for different deployment needs
+- **Cross-Platform Binaries**: Self-contained executables for Linux, macOS, and Windows (x86_64, ARM64)
 - **Local-First**: Stores activity logs locally before syncing to WakaTime
 - **Easy Setup**: One-command installation with automatic shell integration
 
 ## Quick Installation
 
-### One-Line Install
+### Pre-compiled Binary (Recommended for Production)
 
 ```bash
-curl -fsSL https://go.qincai.xyz/wakaterm-ng | bash
+# Download and install the latest binary
+curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/install-binary.sh | bash
+
+# Or install manually
+wget https://github.com/QinCai-rui/WakaTerm-NG/releases/latest/download/wakaterm-linux-x86_64
+chmod +x wakaterm-linux-x86_64
+mv wakaterm-linux-x86_64 ~/.local/bin/wakaterm
 ```
 
-### Manual Installation
+### Python Script Installation (Development/Customization)
 
 ```bash
-# Download and run the installer
-curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/common.sh | bash
+# One-line install
+curl -fsSL https://go.qincai.xyz/wakaterm-ng | bash
 
-# Or clone and install manually
-git clone https://github.com/QinCai-rui/WakaTerm-NG.git
-cd WakaTerm-NG
-./common.sh install
+# Or manual installation
+curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/common.sh | bash
 ```
 
 ### Prerequisites
 
+#### For Binary Installation (Recommended)
+- **No dependencies** - Self-contained executable
+- **Git** (for installation script only)
+- **WakaTime Account** and API key ([Get yours here](https://wakatime.com/api-key))
+
+#### For Python Script Installation  
 - **Python 3.6+** (for the tracking script)
 - **Git** (for installation)
-- **WakaTime Account** and API key ([Get yours here](https://wakatime.com/api-key)) (Or compatible self-hosted WakaTime server, such as Hackatime)
+- **WakaTime Account** and API key ([Get yours here](https://wakatime.com/api-key))
+
+## 🏗️ Building from Source
+
+### Building Cross-Platform Binaries
+
+WakaTerm NG can be compiled to standalone binaries for better performance and deployment:
+
+```bash
+# Clone the repository
+git clone https://github.com/QinCai-rui/WakaTerm-NG.git
+cd WakaTerm-NG
+
+# Install build dependencies
+pip install -r requirements.txt
+
+# Build binary for current platform
+python build.py
+
+# Build with testing
+python build.py --test
+
+# Clean build artifacts
+python build.py --clean
+```
+
+### Using Make (Alternative)
+
+```bash
+# Install dependencies
+make install-deps
+
+# Build optimized binary
+make build
+
+# Build and test
+make test
+
+# Install binary locally
+make install
+
+# Show size comparison
+make size
+
+# Clean everything
+make clean
+```
+
+### Supported Platforms
+
+| Platform | Architecture | Status | Binary Size |
+|----------|-------------|---------|-------------|
+| Linux | x86_64 | ✅ | ~7-8MB |
+| Linux | ARM64 | ✅ | ~7-8MB |
+| macOS | x86_64 | ✅ | ~8-9MB |
+| macOS | ARM64 (M1/M2) | ✅ | ~8-9MB |
+| Windows | x86_64 | ✅ | ~8-9MB |
+
+### Performance Comparison
+
+See [PERFORMANCE.md](PERFORMANCE.md) for detailed analysis of binary vs Python script performance.
 
 ## Architecture
 
