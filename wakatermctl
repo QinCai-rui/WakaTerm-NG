@@ -834,7 +834,7 @@ Examples:
         help="Disable colored output"
     )
     
-        # Create subparsers for stats and ignore commands
+    # Create subparsers for stats and ignore commands
     subparsers = parser.add_subparsers(dest="subcommand", help="Available commands")
     
     # Stats subparser (default behavior)
