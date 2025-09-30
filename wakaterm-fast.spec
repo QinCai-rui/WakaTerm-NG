@@ -58,8 +58,8 @@ a = Analysis(
         # Build tools - not needed at runtime
         'distutils', 'setuptools', 'pkg_resources', 'importlib.metadata',
         
-        # Compression we don't use
-        'bz2', 'lzma', 'gzip', 'zipfile', 'tarfile',
+        # Compression we don't use (but zipfile is needed by PyInstaller! THIS IS STUPID!!!!!!)
+        'bz2', 'lzma', 'gzip', 'tarfile',
         
         # Other unused modules
         'webbrowser', 'calendar',
@@ -83,6 +83,7 @@ a = Analysis(
         # - fcntl/termios (may be needed on Unix)
         # - http (base module, http.server is excluded)
         # - codecs (needed for text encoding)
+        # - zipfile (needed by PyInstaller's runtime hooks)
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
