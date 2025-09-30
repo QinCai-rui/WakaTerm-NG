@@ -92,12 +92,37 @@ class WakatermBuilder:
             self.build_type = 'cython'
             print("🚀 Build type: Cython compiled (from command line)")
             return
-        
+
+        env_choice = os.environ.get('WAKATERM_BUILD_TYPE', '').strip().lower()
+        choice_map = {
+            '1': 'cython',
+            'cython': 'cython',
+            'default': 'cython',
+            '2': 'python',
+            'python': 'python',
+            'source': 'python',
+        }
+
+        if env_choice:
+            selected = choice_map.get(env_choice)
+            if selected:
+                self.build_type = selected
+                label = 'Cython compiled' if selected == 'cython' else 'Python source'
+                print(f"🔧 Build type: {label} (from WAKATERM_BUILD_TYPE={env_choice})")
+                return
+            else:
+                print(f"⚠️  Ignoring invalid WAKATERM_BUILD_TYPE value: {env_choice}")
+
+        if not sys.stdin.isatty() or os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS'):
+            self.build_type = 'cython'
+            print("🤖 Non-interactive environment detected; defaulting to Cython build")
+            return
+
         print("\n🏗️  Choose build type:")
         print("  1) Cython compiled binaries (recommended - faster performance)")
         print("  2) Python source package (easier development, no compilation)")
         print()
-        
+
         while True:
             try:
                 choice = input("Enter your choice (1-2) [default: 1]: ").strip()
