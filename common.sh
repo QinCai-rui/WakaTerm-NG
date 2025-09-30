@@ -126,8 +126,16 @@ load_shell_integration() {
 }
 
 load_installation() {
-    printf "Loading installation...\n"
-    fetch_and_source "$RAW_BASE/modules/installation.sh" "installation.sh" || exit 1
+    printf "Loading installation modules (this might take a while)...\n"
+    fetch_and_source "$RAW_BASE/modules/binary_installer.sh" "binary_installer.sh" || exit 1
+    fetch_and_source "$RAW_BASE/modules/source_installer.sh" "source_installer.sh" || exit 1
+    fetch_and_source "$RAW_BASE/modules/testing.sh" "testing.sh" || exit 1
+    fetch_and_source "$RAW_BASE/modules/installation_main.sh" "installation_main.sh" || exit 1
+}
+
+load_uninstallation() {
+    printf "Loading uninstallation module...\n"
+    fetch_and_source "$RAW_BASE/modules/uninstaller.sh" "uninstaller.sh" || exit 1
 }
 
 # Load modules based on subcommand requirements
@@ -146,7 +154,7 @@ load_modules_for_action() {
             ;;
         "uninstall")
             printf "(2/3) "; load_state_tracking
-            printf "(3/3) "; load_installation
+            printf "(3/3) "; load_uninstallation
             ;;
         "upgrade")
             printf "(2/4) "; load_state_tracking
