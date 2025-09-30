@@ -10,11 +10,13 @@ import time
 import json
 import hashlib
 import argparse
+import subprocess
 from pathlib import Path
 from typing import Optional, List, Dict
 from datetime import datetime
 
-global DEBUG_MODE
+# init DEBUG_MODE as global variable
+DEBUG_MODE = False
 
 class TerminalTracker:
     """Main terminal tracking class that logs to local files"""
@@ -239,6 +241,114 @@ class TerminalTracker:
             "plugin": "wakaterm-ng/1.3.2"
         }
     
+    def _is_wakatime_available(self) -> bool:
+        """Check if wakatime-cli is available and configured"""
+        # Check for wakatime-cli executable
+        wakatime_paths = [
+            Path.home() / '.wakatime' / 'wakatime-cli',
+            Path('/usr/local/bin/wakatime-cli'),
+            Path('/usr/bin/wakatime-cli')
+        ]
+        
+        wakatime_cli = None
+        for path in wakatime_paths:
+            if path.exists() and os.access(path, os.X_OK):
+                wakatime_cli = path
+                break
+        
+        if not wakatime_cli:
+            # Try to find in PATH
+            import shutil
+            wakatime_cli = shutil.which('wakatime-cli')
+            if not wakatime_cli:
+                return False
+        
+        # Check for API key in config file
+        config_path = Path.home() / '.wakatime.cfg'
+        if config_path.exists():
+            try:
+                with open(config_path, 'r') as f:
+                    content = f.read()
+                    if 'api_key' in content and len(content.strip()) > 20:  # Basic check
+                        return True
+            except Exception:
+                pass
+        
+        # Check for API key in environment
+        if os.environ.get('WAKATIME_API_KEY'):
+            return True
+            
+        return False
+    
+    def _send_to_wakatime(self, command: str, cwd: str, timestamp: float, duration: float, debug: bool = False):
+        """Send command data to WakaTime using wakatime-cli"""
+        if not self._is_wakatime_available():
+            if debug:
+                print("WAKATERM DEBUG: wakatime-cli not available or not configured, skipping WakaTime sync", file=sys.stderr)
+            return
+        
+        try:
+            # Find wakatime-cli executable
+            wakatime_cli = None
+            wakatime_paths = [
+                Path.home() / '.wakatime' / 'wakatime-cli',
+                Path('/usr/local/bin/wakatime-cli'),
+                Path('/usr/bin/wakatime-cli')
+            ]
+            
+            for path in wakatime_paths:
+                if path.exists() and os.access(path, os.X_OK):
+                    wakatime_cli = str(path)
+                    break
+            
+            if not wakatime_cli:
+                import shutil
+                wakatime_cli = shutil.which('wakatime-cli')
+            
+            if not wakatime_cli:
+                if debug:
+                    print("WAKATERM DEBUG: wakatime-cli executable not found", file=sys.stderr)
+                return
+            
+            # Use the existing create_activity_entry method to get all metadata!
+            entry = self.create_activity_entry(command, cwd, timestamp, duration)
+            
+            wakatime_args = [
+                wakatime_cli,
+                '--entity', entry['entity'],
+                '--entity-type', 'file',
+                '--project', entry['project'],
+                '--language', entry['language'],
+                '--time', str(entry['timestamp']),
+                '--plugin', entry['plugin']
+            ]
+            
+            # Add category based on language
+            if entry['language'] in ['Shell', 'Navigation', 'Text Processing', 'Package Manager', 'Documentation', 'Archive', 'File Operations', 'System Admin']:
+                wakatime_args.extend(['--category', 'debugging'])
+            elif entry['language'] in ['Git', 'Subversion', 'Mercurial']:
+                wakatime_args.extend(['--category', 'code reviewing'])
+            elif entry['language'] in ['Docker', 'Kubernetes', 'Terraform', 'Ansible']:
+                wakatime_args.extend(['--category', 'building'])
+            else:
+                wakatime_args.extend(['--category', 'coding'])
+            
+            # Run wakatime-cli in background
+            subprocess.Popen(
+                wakatime_args,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True  # Detach from parent process
+            )
+            
+            if debug:
+                print(f"WAKATERM DEBUG: Sent to WakaTime: {entry['entity']} (project: {entry['project']}, language: {entry['language']})", file=sys.stderr)
+                
+        except Exception as e:
+            if debug:
+                print(f"WAKATERM DEBUG: Error sending to WakaTime: {e}", file=sys.stderr)
+            pass  # Silently fail WakaTime integration
+    
     def track_command(self, command: str, cwd: Optional[str] = None, timestamp: Optional[float] = None, duration: Optional[float] = None, debug: bool = False):
         """Main method to track a command by logging to local file"""
         if not command.strip():
@@ -260,6 +370,9 @@ class TerminalTracker:
             # Append to log file (JSON Lines format)
             with open(self.log_file, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(entry) + '\n')
+            
+            # Also send to WakaTime
+            self._send_to_wakatime(command, cwd, timestamp, duration, debug)
                 
         except Exception as e:
             # If there's any error, log in debug mode or silently fail
@@ -293,6 +406,7 @@ def main():
     args = parser.parse_args()
     
     # Check for debug mode from environment variable as well
+    global DEBUG_MODE
     DEBUG_MODE = args.debug or os.environ.get("WAKATERM_DEBUG", "").lower() in ("1", "true", "yes", "on")
     
     tracker = TerminalTracker(args.log_dir)
