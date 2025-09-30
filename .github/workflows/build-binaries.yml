@@ -12,6 +12,8 @@ jobs:
   build:
     name: Build ${{ matrix.os }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
+    env:
+      WAKATERM_BUILD_TYPE: cython
     strategy:
       fail-fast: false
       matrix:
@@ -70,8 +72,9 @@ jobs:
               apt-get update && apt-get install -y gcc g++ make
               python -m pip install --upgrade pip
               pip install -r requirements.txt
-              python build.py
-              python build.py --test
+              export WAKATERM_BUILD_TYPE=cython
+              python build.py --cython
+              python build.py --cython --test
             "
 
       - name: Install dependencies (Native)
@@ -82,11 +85,11 @@ jobs:
 
       - name: Build binary (Native)
         if: ${{ !matrix.use_qemu }}
-        run: python build.py
+        run: python build.py --cython
 
       - name: Test binary (Native)
         if: ${{ !matrix.use_qemu }}
-        run: python build.py --test
+        run: python build.py --cython --test
 
       - name: Create release artifact
         run: |
