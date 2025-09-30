@@ -701,10 +701,14 @@ def handle_ignore_commands(args, use_colors: bool):
     ignore_filter = CommandIgnoreFilter()
     
     if args.ignore_action == "add":
-        ignore_filter.add_pattern(args.pattern)
-        success_color = Colors.GREEN if use_colors else ""
-        reset_color = Colors.RESET if use_colors else ""
-        print(f"{success_color}Added ignore pattern: {args.pattern}{reset_color}")
+        if ignore_filter.add_pattern(args.pattern):
+            success_color = Colors.GREEN if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            print(f"{success_color}Added ignore pattern: {args.pattern}{reset_color}")
+        else:
+            warn_color = Colors.YELLOW if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            print(f"{warn_color}Pattern '{args.pattern}' already exists{reset_color}")
         
     elif args.ignore_action == "remove":
         if ignore_filter.remove_pattern(args.pattern):
@@ -967,14 +971,36 @@ Examples:
         
         if len(sys.argv) >= 3:
             args.ignore_action = sys.argv[2]
-            if args.ignore_action == "add" and len(sys.argv) >= 4:
-                args.pattern = sys.argv[3]
-            elif args.ignore_action == "remove" and len(sys.argv) >= 4:
-                args.pattern = sys.argv[3]
-            elif args.ignore_action == "test" and len(sys.argv) >= 4:
-                args.test_command = sys.argv[3]
+            if args.ignore_action == "add":
+                if len(sys.argv) >= 4:
+                    args.pattern = sys.argv[3]
+                else:
+                    print("Error: 'add' requires a pattern argument", file=sys.stderr)
+                    print("Usage: wakatermctl ignore add <pattern>", file=sys.stderr)
+                    return
+            elif args.ignore_action == "remove":
+                if len(sys.argv) >= 4:
+                    args.pattern = sys.argv[3]
+                else:
+                    print("Error: 'remove' requires a pattern argument", file=sys.stderr)
+                    print("Usage: wakatermctl ignore remove <pattern>", file=sys.stderr)
+                    return
+            elif args.ignore_action == "test":
+                if len(sys.argv) >= 4:
+                    args.test_command = sys.argv[3]
+                else:
+                    print("Error: 'test' requires a command argument", file=sys.stderr)
+                    print("Usage: wakatermctl ignore test <command>", file=sys.stderr)
+                    return
             elif args.ignore_action == "clear":
                 args.yes = "--yes" in sys.argv
+            elif args.ignore_action in ["list", "edit"]:
+                # These don't need additional arguments
+                pass
+            else:
+                print(f"Error: Unknown ignore action '{args.ignore_action}'", file=sys.stderr)
+                print("Valid actions: add, remove, list, test, edit, clear", file=sys.stderr)
+                return
         else:
             print("Usage: wakatermctl ignore {add,remove,list,test,edit,clear} ...", file=sys.stderr)
             return

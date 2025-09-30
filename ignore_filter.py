@@ -242,26 +242,36 @@ debug_*
         
         return ignored
     
-    def add_pattern(self, pattern: str) -> None:
+    def add_pattern(self, pattern: str) -> bool:
         """
         Add a new ignore pattern to the file.
         
         Args:
             pattern: The pattern to add
+            
+        Returns:
+            True if pattern was added, False if it already exists
         """
         try:
+            # Check if pattern already exists
+            current_patterns = self.list_patterns()
+            if pattern in current_patterns:
+                return False
+            
             # Ensure the config directory exists
             self.ignore_file_path.parent.mkdir(parents=True, exist_ok=True)
             
             with open(self.ignore_file_path, 'a', encoding='utf-8') as f:
-                f.write(f"\n{pattern}\n")
+                f.write(f"{pattern}\n")
             
             # Reload patterns
             self._load_patterns()
+            return True
             
         except Exception as e:
             if os.environ.get('WAKATERM_DEBUG', '').lower() in ('1', 'true', 'yes', 'on'):
                 print(f"WAKATERM DEBUG: Could not add pattern '{pattern}': {e}", file=os.sys.stderr)
+            return False
     
     def remove_pattern(self, pattern: str) -> bool:
         """
