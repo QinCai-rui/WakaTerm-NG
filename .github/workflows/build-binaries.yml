@@ -88,10 +88,10 @@ jobs:
           retention-days: 90
 
   release:
-    name: Create Release
+    name: Attach Files to Release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'release'
     
     steps:
       - name: Checkout code
@@ -120,10 +120,18 @@ jobs:
             fi
           done
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release/*
-          draft: false
-          prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
-          generate_release_notes: true
+      - name: Attach Files to Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Get the release tag
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          echo "Attaching files to release: $TAG_NAME"
+          
+          # Upload all release files to the existing release
+          for file in release/*; do
+            if [ -f "$file" ]; then
+              echo "Uploading: $file"
+              gh release upload "$TAG_NAME" "$file" --clobber
+            fi
+          done
