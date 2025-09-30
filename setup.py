@@ -7,6 +7,7 @@ Supports both Cython compilation and regular Python installation
 from setuptools import setup, Extension
 import sys
 import os
+import platform
 
 # Check if user wants Cython compilation or regular Python installation
 USE_CYTHON = True
@@ -31,7 +32,16 @@ if USE_CYTHON:
 # Setup configuration based on installation type
 if USE_CYTHON:
     # Define platform-specific compiler flags for Cython
-    extra_compile_args = ["-O3", "-march=native"] if sys.platform != "win32" else ["/O2"]
+    if sys.platform == "win32":
+        # Windows MSVC compiler flags
+        extra_compile_args = ["/O2"]
+    elif sys.platform == "darwin":  # macOS
+        # macOS Clang doesn't support -march=native
+        # Use general optimization flags that work across all macOS versions
+        extra_compile_args = ["-O3", "-ffast-math"]
+    else:  # Linux and other Unix-like systems
+        # Use GCC-style optimization flags
+        extra_compile_args = ["-O3", "-march=native"]
 
     # Define extensions to compile with Cython
     extensions = [
