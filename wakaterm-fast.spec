@@ -22,33 +22,67 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # MAXIMUM exclusions for speed - remove everything not needed
+        # GUI frameworks - definitely not needed
         'tkinter', 'turtle', '_tkinter',
         'matplotlib', 'numpy', 'scipy', 'pandas',
         'PIL', 'Pillow', 'PyQt5', 'PyQt6', 'PySide2', 'PySide6',
         'jupyter', 'ipython', 'notebook',
+        
+        # Testing frameworks - not needed in production
         'pytest', 'unittest', 'doctest', 'test',
         'pdb', 'cProfile', 'profile', 'pstats',
-        'ssl', 'http', 'xmlrpc', 'wsgiref',
+        
+        # Network protocols we don't use
+        'ssl', 'http.server', 'xmlrpc', 'wsgiref',
         'email', 'html', 'urllib.request', 'urllib.parse', 'urllib.error',
         'ftplib', 'poplib', 'imaplib', 'nntplib', 'smtplib',
+        
+        # Audio/Video - not needed
         'wave', 'aifc', 'sunau', 'sndhdr', 'ossaudiodev', 'audioop',
-        'tty', 'pty', 'select', 'fcntl', 'termios',
-        'xml', 'xmlrpc', 'xml.etree', 'xml.dom', 'xml.parsers',
+        
+        # Terminal control we don't use
+        'tty', 'pty',
+        
+        # XML processing - not needed
+        'xml.etree', 'xml.dom', 'xml.parsers', 'xml.sax',
+        
+        # Concurrency - we don't use these
         'multiprocessing', 'concurrent', 'asyncio',
-        'sqlite3', 'dbm', 'csv', 'pickle', 'shelve',
+        
+        # Databases - not needed
+        'sqlite3', 'dbm',
+        
+        # Serialization we don't use
+        'pickle', 'shelve',
+        
+        # Build tools - not needed at runtime
         'distutils', 'setuptools', 'pkg_resources', 'importlib.metadata',
+        
+        # Compression we don't use
         'bz2', 'lzma', 'gzip', 'zipfile', 'tarfile',
-        'webbrowser', 'calendar', 'locale', 'gettext',
-        'mmap', 'signal', 'threading', 'queue', '_queue',
-        'collections.abc', 'typing_extensions',
-        'codecs', 'encodings.idna', 'encodings.punycode',
+        
+        # Other unused modules
+        'webbrowser', 'calendar',
+        'mmap', 'threading', 'queue', '_queue',
+        'typing_extensions',
+        'encodings.idna', 'encodings.punycode',
         'ctypes', 'ctypes.util', 'ctypes.wintypes',
         'decimal', 'fractions', 'statistics',
-        'pprint', 'copy', 'deepcopy',  # reprlib needed by collections
-        'socket', 'socketserver', 'selectors',
-        'logging', 'logging.config', 'logging.handlers',
-        'urllib', 'urllib3', 'requests', 'certifi',
+        'pprint', 'copy', 'deepcopy',
+        'socketserver',
+        'logging.config', 'logging.handlers',
+        'urllib3', 'requests', 'certifi',
+        
+        # IMPORTANT: Do NOT exclude these core stdlib modules:
+        # - collections.abc (needed by collections, inspect)
+        # - reprlib (needed by collections)
+        # - signal (needed by subprocess)
+        # - locale (may be needed by argparse)
+        # - socket (needed for hostname)
+        # - selectors (needed by subprocess)
+        # - fcntl/termios (may be needed on Unix)
+        # - http (base module, http.server is excluded)
+        # - codecs (needed for text encoding)
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
