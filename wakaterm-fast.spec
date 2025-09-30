@@ -22,68 +22,43 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # GUI frameworks - definitely not needed
+        # Only exclude heavy GUI and ML frameworks that are definitely not needed
         'tkinter', 'turtle', '_tkinter',
         'matplotlib', 'numpy', 'scipy', 'pandas',
         'PIL', 'Pillow', 'PyQt5', 'PyQt6', 'PySide2', 'PySide6',
         'jupyter', 'ipython', 'notebook',
         
         # Testing frameworks - not needed in production
-        'pytest', 'unittest', 'doctest', 'test',
-        'pdb', 'cProfile', 'profile', 'pstats',
+        'pytest', 'unittest.mock', 'doctest',
+        'pdb', 'cProfile', 'profile',
         
-        # Network protocols we don't use
-        'ssl', 'http.server', 'xmlrpc', 'wsgiref',
-        'email', 'html', 'urllib.request', 'urllib.parse', 'urllib.error',
-        'ftplib', 'poplib', 'imaplib', 'nntplib', 'smtplib',
+        # Heavy network protocols we definitely don't use
+        'email', 'ftplib', 'poplib', 'imaplib', 'nntplib', 'smtplib',
+        'xmlrpc', 'wsgiref',
         
         # Audio/Video - not needed
         'wave', 'aifc', 'sunau', 'sndhdr', 'ossaudiodev', 'audioop',
         
-        # Terminal control we don't use
-        'tty', 'pty',
-        
         # XML processing - not needed
         'xml.etree', 'xml.dom', 'xml.parsers', 'xml.sax',
         
-        # Concurrency - we don't use these
-        'multiprocessing', 'concurrent', 'asyncio',
+        # Heavy async frameworks - not needed
+        'asyncio', 'concurrent.futures',
         
         # Databases - not needed
         'sqlite3', 'dbm',
         
-        # Serialization we don't use
-        'pickle', 'shelve',
-        
         # Build tools - not needed at runtime
-        'distutils', 'setuptools', 'pkg_resources', 'importlib.metadata',
+        'distutils', 'setuptools', 'pkg_resources',
         
-        # Compression we don't use (but zipfile is needed by PyInstaller! THIS IS STUPID!!!!!!)
-        'bz2', 'lzma', 'gzip', 'tarfile',
+        # Compression we don't use
+        'bz2', 'lzma',
         
-        # Other unused modules
-        'webbrowser', 'calendar',
-        'mmap', 'queue', '_queue',
-        'typing_extensions',
-        'encodings.idna', 'encodings.punycode',
-        'ctypes', 'ctypes.util', 'ctypes.wintypes',
-        'decimal', 'fractions', 'statistics',
-        'pprint', 'copy', 'deepcopy',
+        # Other truly unused modules
+        'webbrowser',
+        'pprint',
         'socketserver',
-        'logging.config', 'logging.handlers',
         'urllib3', 'requests', 'certifi',
-        
-        # IMPORTANT: Do NOT exclude these core stdlib modules:
-        # - collections.abc (needed by collections, inspect)
-        # - reprlib (needed by collections)
-        # - signal (needed by subprocess)
-        # - locale (may be needed by argparse)
-        # - socket (needed for hostname)
-        # - selectors (needed by subprocess)
-        # - fcntl/termios (may be needed on Unix)
-        # - http (base module, http.server is excluded)
-        # - codecs (needed for text encoding)
-        # - zipfile (needed by PyInstaller's runtime hooks)
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
