@@ -1099,7 +1099,7 @@ Examples:
             print("\nGoodbye!")
         sys.exit(0)
     except Exception as e:
-        if args.debug:
+        if getattr(args, 'debug', False):
             import traceback
             traceback.print_exc()
         else:
