@@ -275,6 +275,19 @@ install_prebuilt_binary() {
         cp -r "wakaterm-dist" "$shared_dir/"
         track_state "directories_created" "$shared_dir/wakaterm-dist"
         success "Compiled modules installed to $shared_dir/wakaterm-dist"
+
+        # Create a small shim so the wrapper in ~/.local/bin can import compiled modules
+        # The wrapper expects a 'wakaterm-dist' directory next to the binary, so
+        # create a symlink in the bin directory pointing to the shared compiled modules.
+        local bin_dir="$HOME/.local/bin"
+        mkdir -p "$bin_dir"
+        if [[ -L "$bin_dir/wakaterm-dist" || -e "$bin_dir/wakaterm-dist" ]]; then
+            log "Existing $bin_dir/wakaterm-dist found; skipping symlink creation"
+        else
+            ln -s "$shared_dir/wakaterm-dist" "$bin_dir/wakaterm-dist" 2>/dev/null || {
+                warn "Could not create symlink at $bin_dir/wakaterm-dist. You may need to create it manually."
+            }
+        fi
     fi
     
     # Clean up
@@ -662,11 +675,41 @@ remove_from_file() {
 test_installation() {
     log "Testing installation..."
     
-    if [[ -f "$INSTALL_DIR/wakaterm.py" ]]; then
-        python3 "$INSTALL_DIR/wakaterm.py" --help >/dev/null 2>&1
-        success "WakaTerm NG is working correctly"
+    local bin_dir="$HOME/.local/bin"
+    local wakaterm_bin="$bin_dir/wakaterm"
+    local wakatermctl_bin="$bin_dir/wakatermctl"
+
+    local wakaterm_ok=false
+    local wakatermctl_ok=false
+
+    if [[ -x "$wakaterm_bin" ]]; then
+        log "Running: $wakaterm_bin --help"
+        if "$wakaterm_bin" --help >/dev/null 2>&1; then
+            wakaterm_ok=true
+            success "wakaterm binary responded to --help"
+        else
+            warn "wakaterm binary failed --help check"
+        fi
     else
-        error "Installation test failed"
+        warn "wakaterm binary not found at $wakaterm_bin"
+    fi
+
+    if [[ -x "$wakatermctl_bin" ]]; then
+        log "Running: $wakatermctl_bin stats --no-color"
+        if "$wakatermctl_bin" stats --no-color >/dev/null 2>&1; then
+            wakatermctl_ok=true
+            success "wakatermctl ran 'stats' successfully"
+        else
+            warn "wakatermctl failed to run 'stats'"
+        fi
+    else
+        warn "wakatermctl binary not found at $wakatermctl_bin"
+    fi
+
+    if [[ "$wakaterm_ok" == "true" || "$wakatermctl_ok" == "true" ]]; then
+        success "WakaTerm NG installation tests passed (at least one binary functional)"
+    else
+        error "Installation test failed: no functional binaries found"
         exit 1
     fi
 }
