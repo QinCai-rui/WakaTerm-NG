@@ -39,7 +39,7 @@ a = Analysis(
         'distutils', 'setuptools', 'pkg_resources', 'importlib.metadata',
         'bz2', 'lzma', 'gzip', 'zipfile', 'tarfile',
         'webbrowser', 'calendar', 'locale', 'gettext',
-        'mmap', 'signal', 'threading', 'queue', '_queue',
+        'mmap', 'signal', 'queue', '_queue',
         'ctypes', 'ctypes.util', 'ctypes.wintypes',
         'decimal', 'fractions', 'statistics',
         'socket', 'socketserver', 'selectors',
