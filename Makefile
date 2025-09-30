@@ -59,12 +59,12 @@ help:
 install-deps:
 	@echo "📦 Installing build dependencies..."
 	$(PYTHON) -m pip install --upgrade pip
-	$(PYTHON) -m pip install -r requirements.txt
+	$(PYTHON) -m pip install cython>=3.0.0
 
 # Build optimized binary
 .PHONY: build
 build:
-	@echo "🚀 Building optimized binary for $(PLATFORM)-$(ARCH)..."
+	@echo "🚀 Building Cython-optimized binary for $(PLATFORM)-$(ARCH)..."
 	$(PYTHON) build.py
 
 # Build debug binary

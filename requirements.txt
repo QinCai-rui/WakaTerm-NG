@@ -4,5 +4,5 @@
 # - pathlib, typing, datetime, tempfile, shutil, re
 # - No external dependencies required for runtime!
 
-# Build dependencies for creating cross-platform binaries
-pyinstaller>=6.0.0
+# Build dependencies for creating optimized binaries with Cython
+cython>=3.0.0

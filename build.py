@@ -88,92 +88,131 @@ class WakatermBuilder:
         # Create directories
         self.binary_dir.mkdir(exist_ok=True)
         
-        # Check if PyInstaller is available
+        # Check if Cython is available
         try:
-            result = subprocess.run([sys.executable, '-c', 'import PyInstaller'], 
+            result = subprocess.run([sys.executable, '-c', 'import Cython'], 
                                  capture_output=True, text=True)
             if result.returncode != 0:
-                print("📦 Installing PyInstaller...")
+                print("📦 Installing Cython...")
                 return self._run_command([
-                    sys.executable, '-m', 'pip', 'install', 'pyinstaller>=6.0.0'
-                ], "Installing PyInstaller")
+                    sys.executable, '-m', 'pip', 'install', 'cython>=3.0.0'
+                ], "Installing Cython")
             else:
-                print("✅ PyInstaller already available")
+                print("✅ Cython already available")
                 return True
         except Exception as e:
-            print(f"❌ Failed to check PyInstaller: {e}")
+            print(f"❌ Failed to check Cython: {e}")
             return False
     
     def build_binary(self, optimize: bool = True) -> Optional[Path]:
-        """Build the binary for the current platform"""
-        print(f"🚀 Building WakaTerm binaries for {self.current_platform}-{self.current_arch}...")
+        """Build the binary for the current platform using Cython"""
+        print(f"🚀 Building WakaTerm binaries with Cython for {self.current_platform}-{self.current_arch}...")
         
-        # Build both wakaterm and wakatermctl
+        # Build using Cython (setup.py)
+        cmd = [
+            sys.executable, 'setup.py', 'build_ext', '--inplace'
+        ]
+        
+        if not self._run_command(cmd, "Building Cython extensions"):
+            print("❌ Failed to build Cython extensions")
+            return None
+        
+        # Create binaries directory
+        self.binary_dir.mkdir(exist_ok=True)
         binaries_built = []
         
-        for spec_name, binary_name in [('wakaterm-fast.spec', 'wakaterm'), ('wakatermctl-simple.spec', 'wakatermctl')]:
-            print(f"  Building {binary_name}...")
-            
-            # Prepare PyInstaller command
-            cmd = [
-                sys.executable, '-m', 'PyInstaller',
-                '--clean',  # Clean PyInstaller cache
-                '--noconfirm',  # Overwrite output directory
-                spec_name
-            ]
-            
-            # Build the binary
-            if not self._run_command(cmd, f"Building {binary_name}"):
-                print(f"❌ Failed to build {binary_name}")
-                continue
-            
-            # Find the created binary directory
-            binary_dir = self.dist_dir / binary_name
-            if not binary_dir.exists():
-                print(f"❌ Binary directory not found at {binary_dir}")
-                continue
-            
-            # Find the actual executable
-            binary_exe = binary_dir / binary_name
-            if self.current_platform == 'windows':
-                binary_exe = binary_dir / f"{binary_name}.exe"
-            
-            if not binary_exe.exists():
-                print(f"❌ Binary executable not found at {binary_exe}")
-                continue
-            
-            # Move to binaries directory with platform suffix
-            final_name = f"{binary_name}-{self.current_platform}-{self.current_arch}"
-            if self.current_platform == 'windows':
-                final_name += '.exe'
-            
-            final_binary = self.binary_dir / final_name
-            
-            # Copy the entire distribution directory
-            import shutil
-            dist_target = self.binary_dir / f"{binary_name}-dist"
-            if dist_target.exists():
-                shutil.rmtree(dist_target)
-            shutil.copytree(binary_dir, dist_target)
-            
-            # Create optimized wrapper script (for Unix-like systems)
-            if self.current_platform in ['linux', 'macos']:
-                # Use a simple, fast wrapper that avoids subshells
-                wrapper_content = f"""#!/bin/sh
-# WakaTerm NG Binary Wrapper - Optimized for speed
-exec "$(dirname "$0")/{binary_name}-dist/{binary_name}" "$@"
+        # Get Python version for .so naming
+        py_version = f"cpython-{sys.version_info.major}{sys.version_info.minor}"
+        
+        # Determine platform-specific extension suffix
+        if self.current_platform == 'linux':
+            ext_suffix = f".{py_version}-{platform.machine()}-linux-gnu.so"
+        elif self.current_platform == 'macos':
+            ext_suffix = f".{py_version}-darwin.so"
+        elif self.current_platform == 'windows':
+            ext_suffix = f".{py_version}-win_amd64.pyd"
+        else:
+            ext_suffix = ".so"
+        
+        # Create wakaterm executable wrapper
+        wakaterm_so = self.root_dir / f"wakaterm{ext_suffix}"
+        ignore_filter_so = self.root_dir / f"ignore_filter{ext_suffix}"
+        
+        if not wakaterm_so.exists():
+            print(f"❌ Wakaterm extension not found at {wakaterm_so}")
+            return None
+        
+        # Create distribution directory
+        dist_dir = self.binary_dir / "wakaterm-dist"
+        if dist_dir.exists():
+            shutil.rmtree(dist_dir)
+        dist_dir.mkdir(parents=True)
+        
+        # Copy compiled extensions to dist directory
+        shutil.copy2(wakaterm_so, dist_dir)
+        if ignore_filter_so.exists():
+            shutil.copy2(ignore_filter_so, dist_dir)
+        
+        # Create executable wrapper script
+        binary_name = f"wakaterm-{self.current_platform}-{self.current_arch}"
+        if self.current_platform == 'windows':
+            binary_name += '.exe'
+            # For Windows, create a batch wrapper
+            wrapper_path = self.binary_dir / binary_name
+            wrapper_content = f"""@echo off
+python -c "import sys; sys.path.insert(0, '%~dp0wakaterm-dist'); import wakaterm; wakaterm.main()" %*
 """
-                with open(final_binary, 'w') as f:
-                    f.write(wrapper_content)
-                os.chmod(final_binary, 0o755)
+            with open(wrapper_path, 'w') as f:
+                f.write(wrapper_content)
+        else:
+            # For Unix-like systems, create a shell wrapper
+            wrapper_path = self.binary_dir / binary_name
+            wrapper_content = f"""#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-dist'))
+import wakaterm
+wakaterm.main()
+"""
+            with open(wrapper_path, 'w') as f:
+                f.write(wrapper_content)
+            os.chmod(wrapper_path, 0o755)
+        
+        print(f"✅ wakaterm binary created: {wrapper_path}")
+        print(f"📊 Extension size: {os.path.getsize(wakaterm_so) / 1024 / 1024:.1f} MB")
+        binaries_built.append(wrapper_path)
+        
+        # Handle wakatermctl (copy as-is since it's already a script)
+        wakatermctl_src = self.root_dir / "wakatermctl"
+        if wakatermctl_src.exists():
+            wakatermctl_bin = self.binary_dir / f"wakatermctl-{self.current_platform}-{self.current_arch}"
+            
+            # Copy wakatermctl to dist directory as well (it may import ignore_filter)
+            shutil.copy2(wakatermctl_src, dist_dir / "wakatermctl")
+            
+            # Create wrapper
+            if self.current_platform == 'windows':
+                wakatermctl_bin = wakatermctl_bin.with_suffix('.exe')
+                wrapper_content = f"""@echo off
+python -c "import sys; sys.path.insert(0, '%~dp0wakaterm-dist'); import wakatermctl; wakatermctl.main()" %*
+"""
             else:
-                # For Windows, just copy the exe
-                shutil.copy2(binary_exe, final_binary)
+                wrapper_content = f"""#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-dist'))
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-dist', 'wakatermctl')) as f:
+    exec(f.read())
+"""
             
-            print(f"✅ {binary_name} binary created: {final_binary}")
-            print(f"📊 Distribution size: {self._get_dir_size(dist_target) / 1024 / 1024:.1f} MB")
+            with open(wakatermctl_bin, 'w') as f:
+                f.write(wrapper_content)
             
-            binaries_built.append(final_binary)
+            if self.current_platform != 'windows':
+                os.chmod(wakatermctl_bin, 0o755)
+            
+            print(f"✅ wakatermctl binary created: {wakatermctl_bin}")
+            binaries_built.append(wakatermctl_bin)
         
         return binaries_built[0] if binaries_built else None
     

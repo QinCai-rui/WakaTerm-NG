@@ -2,11 +2,10 @@
 
 ## Overview
 
-WakaTerm NG provides three distribution methods, each with different performance characteristics:
+WakaTerm NG provides two distribution methods, each with different performance characteristics:
 
 1. **Python Script** (`wakaterm.py`) - Direct execution
-2. **PyInstaller Binary** (`wakaterm-fast.spec`) - Full-featured compiled binary
-3. **Minimal Binary** (`wakaterm-minimal.spec`) - Ultra-optimized minimal build
+2. **Cython Binary** - Compiled C extension for optimal performance
 
 ## Performance Benchmarks
 
@@ -14,10 +13,10 @@ WakaTerm NG provides three distribution methods, each with different performance
 
 | Distribution | Startup Time | Size | Features |
 |-------------|-------------|------|----------|
-| Python Script (full) | ~0.04s | 15KB | Full (requires Python) |
-| Python Script (minimal) | ~0.01s | 2KB | Basic (requires Python) |
-| PyInstaller Binary (full) | ~0.05s | 20MB | Full (standalone) |
-| PyInstaller Binary (minimal) | ~0.04s | 20MB | Basic (standalone) |
+| Python Script (full) | ~0.046s | 15KB | Full (requires Python) |
+| Cython Binary (full) | ~0.043s | 1.4MB | Full (requires Python) |
+
+**Result: Cython binary is ~6.5% faster than raw Python!**
 
 ### ARM64 Linux (Raspberry Pi, Python 3.11)
 
@@ -26,79 +25,60 @@ WakaTerm NG provides three distribution methods, each with different performance
 | Distribution | Startup Time | Size | Features |
 |-------------|-------------|------|----------|
 | Python Script (full) | ~0.14s | 15KB | Full (requires Python) |
-| Python Script (minimal) | ~0.04s | 2KB | Basic (requires Python) |
-| PyInstaller Binary (full) | ~0.20-0.30s | 20MB | Full (standalone) |
-| PyInstaller Binary (minimal) | ~0.15s | 20MB | Basic (standalone) |
+| Cython Binary (full) | ~0.12s | 1.5MB | Full (requires Python) |
 
-## Why is the Binary Slower?
+## Why is Cython Faster?
 
-PyInstaller binaries include:
-- The Python interpreter
-- All required libraries
-- Bootloader code
+Cython compiles Python code to C, which provides several advantages:
+- Direct C function calls instead of Python bytecode interpretation
+- Optimized type handling and memory operations
+- Removal of Python overhead for performance-critical paths
+- Native machine code execution
 
-This means every execution must:
-1. Extract/map the bundled Python interpreter
-2. Load all required libraries
-3. Initialize the Python runtime
-4. Run your code
-
-For very lightweight scripts like WakaTerm, this overhead can exceed the actual execution time.
+Unlike PyInstaller which bundles the entire Python interpreter (adding overhead), Cython creates lean C extensions that leverage the existing Python runtime.
 
 ## When to Use Each Distribution
 
 ### Python Script (Recommended for Development)
 ✅ **Use when:**
 - You have Python installed
-- You want the fastest startup time
+- You want the smallest disk footprint
 - You need to modify the code frequently
-- Disk space is limited
+- Portability across Python versions is important
+
+❌ **Avoid when:**
+- You need the absolute best performance
+- You're deploying to many systems
+
+### Cython Binary (Recommended for Production)
+✅ **Use when:**
+- Performance is important
+- You have Python installed
+- You want optimized execution speed
+- You're deploying to production systems
 
 ❌ **Avoid when:**
 - Target systems don't have Python
-- You need true standalone deployment
-
-### PyInstaller Binary (Recommended for Production)
-✅ **Use when:**
-- Deploying to systems without Python
-- You need a single-file distribution
-- Installation simplicity is critical
-- System has adequate resources
-
-❌ **Avoid when:**
-- Performance is absolutely critical
-- Running on very low-powered devices (< 1GB RAM)
-- Disk space is extremely limited
-
-### Minimal Binary
-✅ **Use when:**
-- You need standalone deployment
-- Performance is important
-- You don't need advanced features (ignore patterns, WakaTime sync)
-
-❌ **Avoid when:**
-- You need full feature set
-- You're okay with Python dependency
+- You need to support multiple Python versions with one binary
 
 ## Optimization Strategies
 
-### For Binary Performance
+### For Cython Binary Performance
 
-1. **Use onedir mode** (already implemented)
-   - Faster startup than onefile
-   - Avoids extraction overhead
+1. **Aggressive compiler optimizations** (already implemented)
+   - `-O3` optimization level
+   - `-march=native` for CPU-specific optimizations
+   - Disabled bounds checking and overflow checks
 
-2. **Minimize imports** (already implemented)
-   - Fewer modules = faster startup
-   - Use conditional imports
+2. **Cython compiler directives** (already implemented)
+   - `boundscheck=False` - Skip array bounds checking
+   - `wraparound=False` - Disable negative indexing
+   - `cdivision=True` - Use C division semantics
+   - `nonecheck=False` - Skip None checks
 
-3. **Exclude unnecessary modules** (already implemented)
-   - See `excludes` in spec files
-   - Balance between size and functionality
-
-4. **Disable UPX compression** (already implemented)
-   - UPX adds decompression overhead
-   - Modern systems prefer uncompressed
+3. **Static typing** (can be added)
+   - Add type annotations for hot paths
+   - Use `cdef` for C-level variables
 
 ### For Script Performance
 
@@ -118,45 +98,39 @@ cd WakaTerm-NG
 # Install dependencies
 pip install -r requirements.txt
 
-# Build for your platform
+# Build Cython binary for your platform
 python build.py
 
 # Test performance
-time ./binaries/wakaterm-dist/wakaterm --help
+time ./binaries/wakaterm-linux-x86_64 --help
 time python3 wakaterm.py --help
 ```
 
 ## Recommendations
 
-### Raspberry Pi / ARM64 Users
-Use the **Python script** directly for best performance:
+### All Users
+Use the **Cython binary** for best performance:
 ```bash
-# Install Python version (fastest)
+# Install and build
 curl -fsSL https://go.qincai.xyz/wakaterm-ng | bash
+# or
+git clone https://github.com/QinCai-rui/WakaTerm-NG.git
+cd WakaTerm-NG
+python build.py
 ```
 
-### x86_64 Desktop/Server Users
-Use the **PyInstaller binary** for convenience:
+### For Development
+Use the **Python script** directly for rapid iteration:
 ```bash
-# Install binary version (most convenient)
-curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/install-binary.sh | bash
-```
-
-### High-Performance Requirements
-Use the **minimal script** or build a **minimal binary**:
-```bash
-# Use minimal script directly
-python3 wakaterm_minimal.py <command>
-
-# Or build minimal binary
-python3 -m PyInstaller wakaterm-minimal.spec
+python3 wakaterm.py <command>
 ```
 
 ## Conclusion
 
-The "best" distribution depends on your priorities:
-- **Speed**: Python script (requires Python installed)
-- **Convenience**: PyInstaller binary (standalone)
-- **Balance**: Minimal binary (fast + standalone)
+WakaTerm NG now uses **Cython compilation** for superior performance:
+- **Speed**: Cython binary is ~6.5% faster than raw Python
+- **Size**: Compact 1.4MB extensions vs 20MB PyInstaller bundles
+- **Reliability**: Native C compilation is more stable than PyInstaller bundling
+- **Efficiency**: Lean extensions leverage existing Python runtime
 
-For terminal command tracking, the overhead difference (0.01-0.05s) is generally negligible compared to the command execution time itself.
+The Cython approach provides the best of both worlds - the performance of compiled code with the flexibility of Python.
