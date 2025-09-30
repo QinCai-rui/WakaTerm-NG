@@ -16,6 +16,38 @@ from collections import defaultdict, Counter
 import glob
 
 
+class Colors:
+    """ANSI color codes for terminal output"""
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    DIM = '\033[2m'
+    
+    # Text colors
+    RED = '\033[31m'
+    GREEN = '\033[32m'
+    YELLOW = '\033[33m'
+    BLUE = '\033[34m'
+    MAGENTA = '\033[35m'
+    CYAN = '\033[36m'
+    WHITE = '\033[37m'
+    GRAY = '\033[90m'
+    
+    # Bright colors
+    BRIGHT_RED = '\033[91m'
+    BRIGHT_GREEN = '\033[92m'
+    BRIGHT_YELLOW = '\033[93m'
+    BRIGHT_BLUE = '\033[94m'
+    BRIGHT_MAGENTA = '\033[95m'
+    BRIGHT_CYAN = '\033[96m'
+    
+    @staticmethod
+    def disable():
+        """Disable colors for non-terminal output"""
+        for attr in dir(Colors):
+            if not attr.startswith('_') and attr != 'disable':
+                setattr(Colors, attr, '')
+
+
 class LocalStatsReader:
     """Reads and analyzes terminal activity from local log files"""
     
@@ -95,26 +127,58 @@ class LocalStatsReader:
         project_counts = Counter()
         command_counts = Counter()
         daily_counts = defaultdict(int)
+        hourly_counts = defaultdict(int)
         
         total_commands = len(entries)
         total_seconds = sum(entry.get('duration', 2.0) for entry in entries)
+        
+        # Time tracking
+        timestamps = [entry['timestamp'] for entry in entries]
+        first_activity = datetime.fromtimestamp(min(timestamps)) if timestamps else None
+        last_activity = datetime.fromtimestamp(max(timestamps)) if timestamps else None
+        
+        # Session tracking (gaps > 15 minutes indicate new session)
+        sessions = []
+        if timestamps:
+            sorted_times = sorted(timestamps)
+            session_start = sorted_times[0]
+            
+            for i in range(1, len(sorted_times)):
+                if sorted_times[i] - sorted_times[i-1] > 900:  # 15 minutes gap
+                    sessions.append((session_start, sorted_times[i-1]))
+                    session_start = sorted_times[i]
+            sessions.append((session_start, sorted_times[-1]))
         
         for entry in entries:
             language = entry.get('language', 'Unknown')
             project = entry.get('project', 'Unknown')
             base_command = entry.get('base_command', 'unknown')
+            timestamp = entry['timestamp']
+            duration = entry.get('duration', 2.0)
             
-            language_counts[language] += entry.get('duration', 2.0)
-            project_counts[project] += entry.get('duration', 2.0)
+            language_counts[language] += duration
+            project_counts[project] += duration
             command_counts[base_command] += 1
             
-            # Daily breakdown
-            entry_date = datetime.fromtimestamp(entry['timestamp']).date()
-            daily_counts[entry_date] += entry.get('duration', 2.0)
+            # Daily and hourly breakdown
+            entry_datetime = datetime.fromtimestamp(timestamp)
+            entry_date = entry_datetime.date()
+            entry_hour = entry_datetime.hour
+            
+            daily_counts[entry_date] += duration
+            hourly_counts[entry_hour] += duration
         
-        # Calculate daily average
+        # Calculate various averages and metrics
         days_in_period = len(daily_counts) if daily_counts else 1
         daily_average = total_seconds / days_in_period if days_in_period > 0 else 0
+        
+        # Find most productive hours and days
+        most_active_hour = max(hourly_counts.items(), key=lambda x: x[1])[0] if hourly_counts else None
+        most_active_day = max(daily_counts.items(), key=lambda x: x[1])[0] if daily_counts else None
+        
+        # Calculate session stats
+        session_durations = [(end - start) for start, end in sessions] if sessions else []
+        avg_session_length = sum(session_durations) / len(session_durations) if session_durations else 0
         
         # Format top items with percentages
         def format_top_items(counter, limit=10):
@@ -133,6 +197,12 @@ class LocalStatsReader:
                 "total_seconds": total_seconds,
                 "total_commands": total_commands,
                 "daily_average": daily_average,
+                "session_count": len(sessions),
+                "avg_session_length": avg_session_length,
+                "first_activity": first_activity.isoformat() if first_activity else None,
+                "last_activity": last_activity.isoformat() if last_activity else None,
+                "most_active_hour": most_active_hour,
+                "most_active_day": str(most_active_day) if most_active_day else None,
                 "languages": format_top_items(language_counts),
                 "projects": format_top_items(project_counts),
                 "commands": [
@@ -141,13 +211,14 @@ class LocalStatsReader:
                 ],
                 "daily_breakdown": {
                     str(date): seconds for date, seconds in daily_counts.items()
-                }
+                },
+                "hourly_breakdown": dict(hourly_counts)
             }
         }
 
 
 class StatsFormatter:
-    """Format statistics for terminal display"""
+    """Format statistics for terminal display with colors and enhanced information"""
     
     @staticmethod
     def format_time(seconds: float) -> str:
@@ -157,59 +228,185 @@ class StatsFormatter:
         elif seconds < 3600:
             minutes = int(seconds // 60)
             remaining_seconds = int(seconds % 60)
-            return f"{minutes}m {remaining_seconds}s"
+            if remaining_seconds > 0:
+                return f"{minutes}m {remaining_seconds}s"
+            return f"{minutes}m"
         else:
             hours = int(seconds // 3600)
             minutes = int((seconds % 3600) // 60)
-            return f"{hours}h {minutes}m"
+            if minutes > 0:
+                return f"{hours}h {minutes}m"
+            return f"{hours}h"
     
     @staticmethod
-    def format_stats(stats_data: Dict, title: str) -> str:
-        """Format stats data for display"""
+    def format_percentage_bar(percentage: float, width: int = 20) -> str:
+        """Create a visual percentage bar"""
+        filled = int(percentage / 100 * width)
+        bar = "█" * filled + "░" * (width - filled)
+        return f"{Colors.CYAN}{bar}{Colors.RESET}"
+    
+    @staticmethod
+    def format_hour_display(hour: int) -> str:
+        """Format hour in 12-hour format"""
+        if hour == 0:
+            return "12:00 AM"
+        elif hour < 12:
+            return f"{hour}:00 AM"
+        elif hour == 12:
+            return "12:00 PM"
+        else:
+            return f"{hour-12}:00 PM"
+    
+    @staticmethod
+    def format_stats(stats_data: Dict, title: str, use_colors: bool = True) -> str:
+        """Format stats data for display with colors and enhanced information"""
+        if not use_colors:
+            Colors.disable()
+            
         if not stats_data or 'data' not in stats_data or not stats_data['data']:
-            return f"\n📊 {title}\n❌ No terminal activity recorded\n"
+            return f"\n{Colors.RED}No terminal activity recorded{Colors.RESET}\n"
         
         data = stats_data['data']
-        output = [f"\n📊 {title}"]
-        output.append("=" * (len(title) + 3))
+        output = []
         
-        # Total time and commands
+        # Header
+        output.append(f"\n{Colors.BOLD}{Colors.BRIGHT_CYAN}{title}{Colors.RESET}")
+        output.append(f"{Colors.GRAY}{'─' * len(title)}{Colors.RESET}")
+        
+        # Overview Section
+        output.append(f"\n{Colors.BOLD}{Colors.YELLOW}OVERVIEW{Colors.RESET}")
+        
         if 'total_seconds' in data:
             total_time = StatsFormatter.format_time(data['total_seconds'])
             total_commands = data.get('total_commands', 0)
-            output.append(f"⏱️  Total Time: {total_time} ({total_commands} commands)")
+            output.append(f"{Colors.GREEN}Total Time:{Colors.RESET} {Colors.BOLD}{total_time}{Colors.RESET}")
+            output.append(f"{Colors.GREEN}Commands Run:{Colors.RESET} {Colors.BOLD}{total_commands:,}{Colors.RESET}")
         
-        # Daily average
         if 'daily_average' in data and data['daily_average']:
             avg_time = StatsFormatter.format_time(data['daily_average'])
-            output.append(f"📈 Daily Average: {avg_time}")
+            output.append(f"{Colors.GREEN}Daily Average:{Colors.RESET} {Colors.BOLD}{avg_time}{Colors.RESET}")
         
-        # Top Languages/Categories
+        # Session Information
+        if 'session_count' in data and data['session_count']:
+            session_count = data['session_count']
+            avg_session = StatsFormatter.format_time(data.get('avg_session_length', 0))
+            output.append(f"{Colors.GREEN}Sessions:{Colors.RESET} {Colors.BOLD}{session_count}{Colors.RESET}")
+            output.append(f"{Colors.GREEN}Avg Session Length:{Colors.RESET} {Colors.BOLD}{avg_session}{Colors.RESET}")
+        
+        # Activity Period
+        if data.get('first_activity') and data.get('last_activity'):
+            try:
+                first = datetime.fromisoformat(data['first_activity']).strftime('%Y-%m-%d %H:%M')
+                last = datetime.fromisoformat(data['last_activity']).strftime('%Y-%m-%d %H:%M')
+                output.append(f"{Colors.GREEN}Active Period:{Colors.RESET} {Colors.DIM}{first} → {last}{Colors.RESET}")
+            except:
+                pass
+        
+        # Peak Activity
+        if data.get('most_active_hour') is not None:
+            peak_hour = StatsFormatter.format_hour_display(data['most_active_hour'])
+            output.append(f"{Colors.GREEN}Most Active Hour:{Colors.RESET} {Colors.BOLD}{peak_hour}{Colors.RESET}")
+        
+        # Languages/Categories Section
         if 'languages' in data and data['languages']:
-            output.append("\n🔤 Languages/Categories:")
-            for lang in data['languages'][:7]:  # Top 7 languages
+            output.append(f"\n{Colors.BOLD}{Colors.YELLOW}LANGUAGES & TECHNOLOGIES{Colors.RESET}")
+            for i, lang in enumerate(data['languages'][:8], 1):
                 name = lang.get('name', 'Unknown')
                 percent = lang.get('percent', 0)
                 time_str = StatsFormatter.format_time(lang.get('total_seconds', 0))
-                output.append(f"   • {name}: {time_str} ({percent:.1f}%)")
+                bar = StatsFormatter.format_percentage_bar(percent, 15)
+                
+                # Color coding based on rank
+                if i == 1:
+                    color = Colors.BRIGHT_GREEN
+                elif i <= 3:
+                    color = Colors.BRIGHT_BLUE
+                else:
+                    color = Colors.WHITE
+                
+                # Ensure consistent width for language names
+                display_name = name[:18] + "..." if len(name) > 21 else name
+                    
+                output.append(f"{color}{i:2d}. {display_name:<21}{Colors.RESET} {bar} {Colors.BOLD}{time_str:>8}{Colors.RESET} {Colors.DIM}({percent:5.1f}%){Colors.RESET}")
         
-        # Top Commands
+        # Commands Section
         if 'commands' in data and data['commands']:
-            output.append("\n⚡ Most Used Commands:")
-            for cmd in data['commands'][:5]:  # Top 5 commands
+            output.append(f"\n{Colors.BOLD}{Colors.YELLOW}TOP COMMANDS{Colors.RESET}")
+            for i, cmd in enumerate(data['commands'][:8], 1):
                 name = cmd.get('name', 'unknown')
                 count = cmd.get('count', 0)
                 percent = cmd.get('percent', 0)
-                output.append(f"   • {name}: {count} times ({percent:.1f}%)")
+                bar = StatsFormatter.format_percentage_bar(percent, 15)
+                
+                if i == 1:
+                    color = Colors.BRIGHT_GREEN
+                elif i <= 3:
+                    color = Colors.BRIGHT_BLUE
+                else:
+                    color = Colors.WHITE
+                
+                # Truncate very long command names and ensure consistent width
+                display_name = name[:18] + "..." if len(name) > 21 else name
+                    
+                output.append(f"{color}{i:2d}. {display_name:<21}{Colors.RESET} {bar} {Colors.BOLD}{count:>4}{Colors.RESET} times {Colors.DIM}({percent:4.1f}%){Colors.RESET}")
         
-        # Top Projects
-        if 'projects' in data and data['projects']:
-            output.append("\n📁 Projects:")
-            for project in data['projects'][:5]:  # Top 5 projects
+        # Projects Section
+        if 'projects' in data and data['projects'] and len(data['projects']) > 1:
+            output.append(f"\n{Colors.BOLD}{Colors.YELLOW}PROJECTS{Colors.RESET}")
+            for i, project in enumerate(data['projects'][:6], 1):
                 name = project.get('name', 'Unknown')
+                if name == 'Unknown':
+                    continue
+                    
                 percent = project.get('percent', 0)
                 time_str = StatsFormatter.format_time(project.get('total_seconds', 0))
-                output.append(f"   • {name}: {time_str} ({percent:.1f}%)")
+                bar = StatsFormatter.format_percentage_bar(percent, 15)
+                
+                if i == 1:
+                    color = Colors.BRIGHT_GREEN
+                elif i <= 3:
+                    color = Colors.BRIGHT_BLUE
+                else:
+                    color = Colors.WHITE
+                    
+                # Truncate long project names with consistent width
+                display_name = name[:18] + "..." if len(name) > 21 else name
+                output.append(f"{color}{i:2d}. {display_name:<21}{Colors.RESET} {bar} {Colors.BOLD}{time_str:>8}{Colors.RESET} {Colors.DIM}({percent:5.1f}%){Colors.RESET}")
+        
+        # Activity Timeline (last 7 days if available)
+        if 'daily_breakdown' in data and data['daily_breakdown']:
+            daily_data = data['daily_breakdown']
+            if len(daily_data) > 1:
+                output.append(f"\n{Colors.BOLD}{Colors.YELLOW}RECENT ACTIVITY{Colors.RESET}")
+                
+                # Sort by date and take last 7 days
+                sorted_days = sorted(daily_data.items())[-7:]
+                max_seconds = max(daily_data.values()) if daily_data.values() else 1
+                
+                for date_str, seconds in sorted_days:
+                    try:
+                        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+                        day_name = date_obj.strftime('%a')
+                        date_display = date_obj.strftime('%m/%d')
+                        
+                        time_str = StatsFormatter.format_time(seconds)
+                        percent_of_max = (seconds / max_seconds) * 100
+                        bar_length = int(percent_of_max / 100 * 20)
+                        bar = "█" * bar_length + "░" * (20 - bar_length)
+                        
+                        # Color based on activity level
+                        if seconds == max_seconds:
+                            bar_color = Colors.BRIGHT_GREEN
+                        elif seconds > max_seconds * 0.7:
+                            bar_color = Colors.GREEN
+                        elif seconds > max_seconds * 0.3:
+                            bar_color = Colors.YELLOW
+                        else:
+                            bar_color = Colors.GRAY
+                            
+                        output.append(f"{day_name} {date_display}  {bar_color}{bar}{Colors.RESET} {Colors.BOLD}{time_str:>8}{Colors.RESET}")
+                    except:
+                        continue
         
         return "\n".join(output) + "\n"
 
@@ -218,7 +415,16 @@ def main():
     """Main CLI entry point"""
     parser = argparse.ArgumentParser(
         description="View your terminal activity statistics from local logs",
-        prog="wakatermctl"
+        prog="wakatermctl",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  wakatermctl                    # Show today's stats
+  wakatermctl yesterday          # Show yesterday's stats  
+  wakatermctl last_7_days        # Show last week's stats
+  wakatermctl --no-color today   # Show stats without colors
+  wakatermctl --json today       # Output raw JSON data
+        """
     )
     
     parser.add_argument(
@@ -232,12 +438,18 @@ def main():
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Output raw JSON data"
+        help="Output raw JSON data instead of formatted display"
+    )
+    
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable colored output"
     )
     
     parser.add_argument(
         "--log-dir",
-        help="Directory containing wakaterm log files"
+        help="Directory containing wakaterm log files (default: ~/.local/share/wakaterm-logs)"
     )
     
     parser.add_argument(
@@ -248,20 +460,28 @@ def main():
     
     args = parser.parse_args()
     
+    # Disable colors if requested or if not in a terminal
+    use_colors = not args.no_color and sys.stdout.isatty()
+    
     try:
         # Initialize stats reader
         reader = LocalStatsReader(args.log_dir)
         
         # Show debug info if requested
         if args.debug:
-            print(f"🔧 Debug Info:", file=sys.stderr)
-            print(f"   Log directory: {reader.log_dir}", file=sys.stderr)
-            print(f"   Directory exists: {reader.log_dir.exists()}", file=sys.stderr)
+            debug_color = "" if not use_colors else Colors.YELLOW
+            reset_color = "" if not use_colors else Colors.RESET
+            
+            print(f"{debug_color}Debug Info:{reset_color}", file=sys.stderr)
+            print(f"  Log directory: {reader.log_dir}", file=sys.stderr)
+            print(f"  Directory exists: {reader.log_dir.exists()}", file=sys.stderr)
+            print(f"  Colors enabled: {use_colors}", file=sys.stderr)
+            
             if reader.log_dir.exists():
                 log_files = list(reader.log_dir.glob("wakaterm-*.jsonl"))
-                print(f"   Log files found: {len(log_files)}", file=sys.stderr)
+                print(f"  Log files found: {len(log_files)}", file=sys.stderr)
                 for log_file in sorted(log_files)[-5:]:  # Show last 5 files
-                    print(f"     {log_file.name}", file=sys.stderr)
+                    print(f"    {log_file.name}", file=sys.stderr)
             print("", file=sys.stderr)
         
         # Get statistics
@@ -281,19 +501,24 @@ def main():
             "last_year": "Last Year Terminal Activity"
         }
         
-        title = period_names.get(args.period, args.period.title())
-        formatted_stats = StatsFormatter.format_stats(stats, title or "Terminal Activity")
+        title = period_names.get(args.period, args.period.replace('_', ' ').title())
+        formatted_stats = StatsFormatter.format_stats(stats, title or "Terminal Activity", use_colors)
         print(formatted_stats)
         
     except KeyboardInterrupt:
-        print("\n👋 Goodbye!")
+        if use_colors:
+            print(f"\n{Colors.CYAN}Goodbye!{Colors.RESET}")
+        else:
+            print("\nGoodbye!")
         sys.exit(0)
     except Exception as e:
         if args.debug:
             import traceback
             traceback.print_exc()
         else:
-            print(f"Error: {e}", file=sys.stderr)
+            error_color = Colors.RED if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            print(f"{error_color}Error: {e}{reset_color}", file=sys.stderr)
         sys.exit(1)
 
 
