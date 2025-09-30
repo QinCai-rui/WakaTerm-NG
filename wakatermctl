@@ -686,23 +686,152 @@ class StatsFormatter:
         return "\n".join(output) + "\n"
 
 
+def handle_ignore_commands(args, use_colors: bool):
+    """Handle ignore pattern management commands"""
+    try:
+        # Import the ignore filter module  
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from ignore_filter import CommandIgnoreFilter
+    except ImportError:
+        error_color = Colors.RED if use_colors else ""
+        reset_color = Colors.RESET if use_colors else ""
+        print(f"{error_color}Error: Could not import ignore filter module{reset_color}", file=sys.stderr)
+        sys.exit(1)
+    
+    ignore_filter = CommandIgnoreFilter()
+    
+    if args.ignore_action == "add":
+        ignore_filter.add_pattern(args.pattern)
+        success_color = Colors.GREEN if use_colors else ""
+        reset_color = Colors.RESET if use_colors else ""
+        print(f"{success_color}Added ignore pattern: {args.pattern}{reset_color}")
+        
+    elif args.ignore_action == "remove":
+        if ignore_filter.remove_pattern(args.pattern):
+            success_color = Colors.GREEN if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            print(f"{success_color}Removed ignore pattern: {args.pattern}{reset_color}")
+        else:
+            warn_color = Colors.YELLOW if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            print(f"{warn_color}Pattern not found: {args.pattern}{reset_color}")
+            
+    elif args.ignore_action == "list":
+        patterns = ignore_filter.list_patterns()
+        if patterns:
+            header_color = Colors.CYAN if use_colors else ""
+            pattern_color = Colors.WHITE if use_colors else ""
+            negation_color = Colors.GREEN if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            
+            print(f"{header_color}Current ignore patterns:{reset_color}")
+            for pattern in patterns:
+                if pattern.startswith("!"):
+                    print(f"  {negation_color}{pattern} (negation){reset_color}")
+                else:
+                    print(f"  {pattern_color}{pattern}{reset_color}")
+            print(f"\n{Colors.DIM if use_colors else ''}Ignore file: {ignore_filter.get_ignore_file_path()}{reset_color}")
+        else:
+            info_color = Colors.BLUE if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            print(f"{info_color}No ignore patterns configured{reset_color}")
+            
+    elif args.ignore_action == "test":
+        if ignore_filter.should_ignore(args.command):
+            warn_color = Colors.RED if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            print(f"{warn_color}IGNORE: '{args.command}' would be ignored{reset_color}")
+        else:
+            success_color = Colors.GREEN if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            print(f"{success_color}TRACK: '{args.command}' would be tracked{reset_color}")
+            
+    elif args.ignore_action == "edit":
+        ignore_file = ignore_filter.get_ignore_file_path()
+        
+        # Try to find a suitable editor
+        editor = os.environ.get('EDITOR') or os.environ.get('VISUAL')
+        if not editor:
+            # Try common editors
+            for cmd in ['nano', 'vim', 'vi', 'emacs', 'code']:
+                if os.system(f'command -v {cmd} >/dev/null 2>&1') == 0:
+                    editor = cmd
+                    break
+        
+        if editor:
+            info_color = Colors.BLUE if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            print(f"{info_color}Opening {ignore_file} in {editor}...{reset_color}")
+            os.system(f'{editor} "{ignore_file}"')
+        else:
+            warn_color = Colors.YELLOW if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            print(f"{warn_color}No editor found. Please edit manually: {ignore_file}{reset_color}")
+            
+    elif args.ignore_action == "clear":
+        if not args.yes:
+            response = input("Are you sure you want to clear all ignore patterns? (y/N): ").strip().lower()
+            if response not in ['y', 'yes']:
+                print("Cancelled")
+                return
+        
+        ignore_file = ignore_filter.get_ignore_file_path()
+        try:
+            if os.path.exists(ignore_file):
+                os.remove(ignore_file)
+            success_color = Colors.GREEN if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            print(f"{success_color}Cleared all ignore patterns{reset_color}")
+        except Exception as e:
+            error_color = Colors.RED if use_colors else ""
+            reset_color = Colors.RESET if use_colors else ""
+            print(f"{error_color}Error clearing patterns: {e}{reset_color}")
+    
+    else:
+        # Show ignore help if no action specified
+        error_color = Colors.RED if use_colors else ""
+        reset_color = Colors.RESET if use_colors else ""
+        print(f"{error_color}Please specify an action: add, remove, list, test, edit, or clear{reset_color}")
+        print("Use 'wakatermctl ignore --help' for more information")
+
+
 def main():
     """Main CLI entry point"""
     parser = argparse.ArgumentParser(
-        description="View your terminal activity statistics from local logs",
+        description="View your terminal activity statistics from local logs and manage ignore patterns",
         prog="wakatermctl",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Stats commands
   wakatermctl                    # Show today's stats
   wakatermctl yesterday          # Show yesterday's stats  
   wakatermctl last_7_days        # Show last week's stats
   wakatermctl --no-color today   # Show stats without colors
   wakatermctl --json today       # Output raw JSON data
+  
+  # Ignore pattern management  
+  wakatermctl ignore add "git status"    # Add pattern to ignore
+  wakatermctl ignore add "debug_*"       # Add wildcard pattern
+  wakatermctl ignore remove "ls"         # Remove pattern
+  wakatermctl ignore list                # List all patterns
+  wakatermctl ignore test "git status"   # Test if command would be ignored
+  wakatermctl ignore edit               # Open ignore file in editor
         """
     )
     
-    parser.add_argument(
+    # Create subparsers for stats and ignore commands
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    
+    # Stats subparser (default behavior)
+    stats_parser = subparsers.add_parser(
+        "stats", 
+        help="Show terminal activity statistics (default command)",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    # Add arguments to stats parser
+    stats_parser.add_argument(
         "period",
         nargs="?",
         default="today",
@@ -710,68 +839,133 @@ Examples:
         help="Time period for statistics (default: today)"
     )
     
-    parser.add_argument(
+    stats_parser.add_argument(
         "--json",
         action="store_true",
         help="Output raw JSON data instead of formatted display"
     )
     
+    stats_parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable colored output"
+    )
+    
+    stats_parser.add_argument(
+        "--log-dir",
+        help="Directory containing wakaterm log files (default: ~/.local/share/wakaterm-logs)"
+    )
+    
+    stats_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show debug information"
+    )
+    
+    stats_parser.add_argument(
+        "--project",
+        help="Filter by specific project name"
+    )
+    
+    stats_parser.add_argument(
+        "--language",
+        help="Filter by specific language/technology"
+    )
+    
+    stats_parser.add_argument(
+        "--command",
+        help="Filter by specific command pattern (supports wildcards)"
+    )
+    
+    stats_parser.add_argument(
+        "--min-time",
+        type=int,
+        help="Minimum seconds to include in analysis (default: 2)"
+    )
+    
+    stats_parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Show only summary statistics"
+    )
+    
+    stats_parser.add_argument(
+        "--export",
+        choices=["csv", "json", "markdown"],
+        help="Export data in specified format"
+    )
+    
+    # Add common arguments to main parser
     parser.add_argument(
         "--no-color",
         action="store_true",
         help="Disable colored output"
     )
     
-    parser.add_argument(
-        "--log-dir",
-        help="Directory containing wakaterm log files (default: ~/.local/share/wakaterm-logs)"
-    )
+    # Ignore patterns subparser
+    ignore_parser = subparsers.add_parser("ignore", help="Manage command ignore patterns")
+    ignore_subparsers = ignore_parser.add_subparsers(dest="ignore_action", help="Ignore pattern actions")
     
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Show debug information"
-    )
+    # Add pattern
+    add_parser = ignore_subparsers.add_parser("add", help="Add an ignore pattern")
+    add_parser.add_argument("pattern", help="Pattern to add (supports wildcards like git*, debug_*, etc.)")
     
-    parser.add_argument(
-        "--project",
-        help="Filter by specific project name"
-    )
+    # Remove pattern  
+    remove_parser = ignore_subparsers.add_parser("remove", help="Remove an ignore pattern")
+    remove_parser.add_argument("pattern", help="Pattern to remove")
     
-    parser.add_argument(
-        "--language",
-        help="Filter by specific language/technology"
-    )
+    # List patterns
+    list_parser = ignore_subparsers.add_parser("list", help="List all ignore patterns")
     
-    parser.add_argument(
-        "--command",
-        help="Filter by specific command pattern (supports wildcards)"
-    )
+    # Test pattern
+    test_parser = ignore_subparsers.add_parser("test", help="Test if a command would be ignored")
+    test_parser.add_argument("command", help="Command to test")
     
-    parser.add_argument(
-        "--min-time",
-        type=int,
-        help="Minimum seconds to include in analysis (default: 2)"
-    )
+    # Edit patterns file
+    edit_parser = ignore_subparsers.add_parser("edit", help="Open ignore patterns file in editor")
     
-    parser.add_argument(
-        "--summary",
-        action="store_true",
-        help="Show only summary statistics"
-    )
-    
-    parser.add_argument(
-        "--export",
-        choices=["csv", "json", "markdown"],
-        help="Export data in specified format"
-    )
+    # Clear all patterns
+    clear_parser = ignore_subparsers.add_parser("clear", help="Clear all ignore patterns")
+    clear_parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
     
     args = parser.parse_args()
+    
+    # Handle case where no subcommand is provided (default to stats)
+    if args.command is None:
+        # If first positional arg looks like a period, treat as stats command
+        if len(sys.argv) > 1 and sys.argv[1] in ["today", "yesterday", "last_7_days", "last_30_days", "last_6_months", "last_year"]:
+            # Re-parse with stats subcommand
+            sys.argv.insert(1, "stats")
+            args = parser.parse_args()
+        else:
+            # Default to stats today
+            args.command = "stats"
+            args.period = "today"
+            # Set default values for stats
+            for attr in ["json", "debug", "project", "language", "command", "min_time", "summary", "export", "log_dir"]:
+                if not hasattr(args, attr):
+                    setattr(args, attr, None)
     
     # Disable colors if requested or if not in a terminal
     use_colors = not args.no_color and sys.stdout.isatty()
     
     try:
+        # Handle ignore pattern management
+        if args.command == "ignore":
+            handle_ignore_commands(args, use_colors)
+            return
+            
+        # For stats commands, ensure we have all required attributes
+        stats_attrs = ['log_dir', 'debug', 'project', 'language', 'min_time', 'summary', 'export', 'json', 'period']
+        for attr in stats_attrs:
+            if not hasattr(args, attr):
+                if attr == 'debug':
+                    setattr(args, attr, False)
+                elif attr == 'period':
+                    setattr(args, attr, 'today')
+                else:
+                    setattr(args, attr, None)
+            
         # Initialize stats reader
         reader = LocalStatsReader(args.log_dir)
         

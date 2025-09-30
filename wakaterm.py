@@ -15,6 +15,17 @@ from pathlib import Path
 from typing import Optional, List, Dict
 from datetime import datetime
 
+# Import ignore filter module
+try:
+    from ignore_filter import CommandIgnoreFilter
+except ImportError:
+    # Fallback if ignore_filter.py is not available
+    class CommandIgnoreFilter:
+        def __init__(self, *args, **kwargs):
+            pass
+        def should_ignore(self, command):
+            return False
+
 # init DEBUG_MODE as global variable
 DEBUG_MODE = False
 
@@ -23,6 +34,9 @@ class TerminalTracker:
     
     def __init__(self, log_dir: Optional[str] = None):
         self.log_dir = Path(log_dir or os.path.expanduser('~/.local/share/wakaterm-logs'))
+        
+        # Initialise the ignore filter
+        self.ignore_filter = CommandIgnoreFilter()
         
         # Create logs directory with better error handling
         try:
@@ -429,6 +443,12 @@ class TerminalTracker:
         if not command.strip():
             if debug:
                 print(f"WAKATERM DEBUG: Skipping empty command", file=sys.stderr)
+            return
+        
+        # Check if command should be ignored
+        if self.ignore_filter.should_ignore(command):
+            if debug:
+                print(f"WAKATERM DEBUG: Ignoring command '{command}' due to ignore patterns", file=sys.stderr)
             return
         
         cwd = cwd or os.getcwd()

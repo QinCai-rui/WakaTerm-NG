@@ -12,6 +12,7 @@
 ## ✨ Features
 
 - **Intelligent Command Tracking**: Automatically detects and categorizes terminal commands by language and project
+- **Command Ignore Patterns**: Filter out unwanted commands using .gitignore-style syntax
 - **Multi-Shell Support**: Works with Bash, Zsh, and Fish shells
 - **Rich Analytics**: Built-in statistics viewer with `wakatermctl` command
 - **Project Detection**: Smart project identification using common indicators (`.git`, `package.json`, etc.)
@@ -76,6 +77,29 @@ api_key = your-api-key-here
 - **Log Directory**: `~/.local/share/wakaterm-logs/` (customisable via `--log-dir`)
 - **Installation Directory**: `~/.local/share/wakaterm/`
 - **Shell Integration**: Automatic detection and setup
+- **Ignore Patterns**: `~/.config/wakaterm/wakaterm_ignore` (supports .gitignore-style patterns)
+
+### Command Ignore Patterns
+
+WakaTerm NG supports filtering out commands using .gitignore-style patterns. This allows you to exclude certain commands from being tracked:
+
+```bash
+# Manage ignore patterns with wakatermctl
+wakatermctl ignore add "ls"           # Ignore 'ls' command
+wakatermctl ignore add "git status"   # Ignore 'git status'  
+wakatermctl ignore add "debug_*"      # Ignore commands starting with 'debug_'
+wakatermctl ignore list               # List all ignore patterns
+wakatermctl ignore test "git status"  # Test if command would be ignored
+wakatermctl ignore edit               # Open ignore file in editor
+```
+
+**Pattern Examples:**
+- `ls` - Exact command match
+- `git*` - All commands starting with 'git'
+- `debug_*` - All commands starting with 'debug_'
+- `!git push*` - Negation: always track git push (overrides `git*`)
+
+See the [ignore patterns documentation](docs/ignore-patterns.md) for detailed syntax and examples.
 
 ## 📊 Usage
 
