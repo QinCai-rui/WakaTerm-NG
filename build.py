@@ -149,13 +149,6 @@ class WakatermBuilder:
             
             final_binary = self.binary_dir / final_name
             
-            # Create a wrapper script that calls the binary in the directory
-            wrapper_content = f"""#!/bin/bash
-# WakaTerm NG Binary Wrapper
-DIR="$( cd "$( dirname "${{BASH_SOURCE[0]}}" )" && pwd )"
-exec "$DIR/{binary_name}-dist/{binary_name}" "$@"
-"""
-            
             # Copy the entire distribution directory
             import shutil
             dist_target = self.binary_dir / f"{binary_name}-dist"
@@ -163,8 +156,13 @@ exec "$DIR/{binary_name}-dist/{binary_name}" "$@"
                 shutil.rmtree(dist_target)
             shutil.copytree(binary_dir, dist_target)
             
-            # Create wrapper script (for Unix-like systems)
+            # Create optimized wrapper script (for Unix-like systems)
             if self.current_platform in ['linux', 'macos']:
+                # Use a simple, fast wrapper that avoids subshells
+                wrapper_content = f"""#!/bin/sh
+# WakaTerm NG Binary Wrapper - Optimized for speed
+exec "$(dirname "$0")/{binary_name}-dist/{binary_name}" "$@"
+"""
                 with open(final_binary, 'w') as f:
                     f.write(wrapper_content)
                 os.chmod(final_binary, 0o755)

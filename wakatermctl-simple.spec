@@ -21,15 +21,21 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # Only exclude the heaviest GUI/ML modules
+        # Only exclude the heaviest GUI/ML modules that are definitely not needed
         'tkinter', 'turtle', '_tkinter',
         'matplotlib', 'numpy', 'scipy', 'pandas',
         'PIL', 'Pillow', 'PyQt5', 'PyQt6', 'PySide2', 'PySide6',
         'jupyter', 'ipython', 'notebook',
         'pytest', 'unittest.mock',
         'pdb',
-        'ssl._create_unverified_context', 'ssl._create_default_https_context',
         'webbrowser',
+        # Heavy network protocols we definitely don't use
+        'email', 'ftplib', 'poplib', 'imaplib', 'nntplib', 'smtplib',
+        'xmlrpc', 'wsgiref',
+        # Databases - not needed
+        'sqlite3', 'dbm',
+        # Build tools - not needed at runtime
+        'distutils', 'setuptools', 'pkg_resources',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
