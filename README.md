@@ -23,39 +23,50 @@
 
 ## Quick Installation
 
-### Pre-compiled Binary (Recommended for Production)
+### One-Line Installation (Recommended)
+
+The unified installer supports both pre-compiled binaries and Python source installation:
 
 ```bash
-# Download and install the latest binary
-curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/install-binary.sh | bash
+# Install with auto-detection (prefers binary if available)
+curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/common.sh | bash
 
-# Or install manually
-wget https://github.com/QinCai-rui/WakaTerm-NG/releases/latest/download/wakaterm-linux-x86_64
-chmod +x wakaterm-linux-x86_64
-mv wakaterm-linux-x86_64 ~/.local/bin/wakaterm
-```
-
-### Python Script Installation (Development/Customization)
-
-```bash
-# One-line install
+# Or with short URL
 curl -fsSL https://go.qincai.xyz/wakaterm-ng | bash
 
-# Or manual installation
-curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/common.sh | bash
+# Force binary installation (downloads from releases)
+curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/common.sh | bash -s -- install --binary
+
+# Force Python source installation (for development/customization)
+curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/common.sh | bash -s -- install --python
+```
+
+### Manual Installation
+
+```bash
+# Download and run the installer
+wget https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/common.sh
+chmod +x common.sh
+./common.sh install
+
+# Or clone and install
+git clone https://github.com/QinCai-rui/WakaTerm-NG.git
+cd WakaTerm-NG
+./common.sh install
 ```
 
 ### Prerequisites
 
-#### For Binary Installation (Recommended)
-- **No dependencies** - Self-contained executable
-- **Git** (for installation script only)
+#### For Binary Installation (Default - Recommended)
+- **curl** or **wget** (for downloading)
+- **tar** (usually pre-installed)
 - **WakaTime Account** and API key ([Get yours here](https://wakatime.com/api-key))
 
-#### For Python Script Installation  
+#### For Python Source Installation  
 - **Python 3.6+** (for the tracking script)
-- **Git** (for installation)
+- **Git** (for downloading source)
 - **WakaTime Account** and API key ([Get yours here](https://wakatime.com/api-key))
+
 
 ## 🏗️ Building from Source
 

@@ -89,10 +89,31 @@ make build
 ./binaries/wakaterm-linux-x86_64 --help
 ```
 
+## Installation
+
+The unified installer (`common.sh`) now supports both pre-compiled binaries and Python source installation:
+
+```bash
+# Install with auto-detection (prefers binary if available)
+curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/common.sh | bash
+
+# Force binary installation (downloads from releases)
+curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/common.sh | bash -s -- install --binary
+
+# Force Python source installation
+curl -fsSL https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/main/common.sh | bash -s -- install --python
+```
+
+The installer will automatically:
+- Download pre-built Cython binaries from GitHub releases (if available)
+- Fall back to cloning and using Python source if binaries aren't available
+- Handle all dependencies and shell integrations
+
 ## Migration Changes
 
 ### Files Added
 - `setup.py` - Cython build configuration
+- Unified binary download support in `modules/installation.sh`
 
 ### Files Modified
 - `build.py` - Updated to use Cython instead of PyInstaller
@@ -100,6 +121,9 @@ make build
 - `PERFORMANCE.md` - Updated with Cython benchmarks
 - `Makefile` - Updated build targets for Cython
 - `.gitignore` - Removed spec file exclusions
+- `common.sh` - Enhanced to support both binary and Python installations
+- `modules/installation.sh` - Added binary download and installation functions
+- `README.md` - Updated installation instructions
 
 ### Files Removed
 - `wakaterm-fast.spec`
@@ -107,6 +131,7 @@ make build
 - `wakaterm.spec`
 - `wakatermctl-fast.spec`
 - `wakatermctl-simple.spec`
+- `install-binary.sh` - Merged into unified `common.sh` installer
 
 ## Conclusion
 
