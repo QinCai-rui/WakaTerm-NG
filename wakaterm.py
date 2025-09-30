@@ -333,16 +333,33 @@ class TerminalTracker:
             else:
                 wakatime_args.extend(['--category', 'coding'])
             
-            # Run wakatime-cli in background
-            subprocess.Popen(
-                wakatime_args,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True  # Detach from parent process
-            )
-            
             if debug:
-                print(f"WAKATERM DEBUG: Sent to WakaTime: {entry['entity']} (project: {entry['project']}, language: {entry['language']})", file=sys.stderr)
+                print(f"WAKATERM DEBUG: Executing wakatime-cli command: {' '.join(wakatime_args)}", file=sys.stderr)
+            
+            # Run wakatime-cli in background
+            if debug:
+                # In debug mode, capture output to see any errors
+                result = subprocess.run(
+                    wakatime_args,
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0:
+                    print(f"WAKATERM DEBUG: Successfully sent to WakaTime: {entry['entity']} (project: {entry['project']}, language: {entry['language']})", file=sys.stderr)
+                else:
+                    print(f"WAKATERM DEBUG: WakaTime CLI error (exit code {result.returncode}):", file=sys.stderr)
+                    if result.stdout:
+                        print(f"WAKATERM DEBUG: stdout: {result.stdout}", file=sys.stderr)
+                    if result.stderr:
+                        print(f"WAKATERM DEBUG: stderr: {result.stderr}", file=sys.stderr)
+            else:
+                # Normal mode: run in background with no output
+                subprocess.Popen(
+                    wakatime_args,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True  # Detach from parent process
+                )
                 
         except Exception as e:
             if debug:
