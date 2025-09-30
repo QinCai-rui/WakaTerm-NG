@@ -219,7 +219,7 @@ class WakatermBuilder:
             # For Windows, create a batch wrapper
             wrapper_path = self.binary_dir / binary_name
             wrapper_content = f"""@echo off
-python -c "import sys; sys.path.insert(0, '%~dp0wakaterm-dist'); import wakaterm; wakaterm.main()" %*
+python -c "import sys; import os; sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath('%~f0')), 'wakaterm-dist')); import wakaterm; wakaterm.main()" %*
 """
             with open(wrapper_path, 'w') as f:
                 f.write(wrapper_content)
@@ -231,7 +231,9 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-dist'))
 import wakaterm
-wakaterm.main()
+
+if __name__ == '__main__':
+    wakaterm.main()
 """
             with open(wrapper_path, 'w') as f:
                 f.write(wrapper_content)
