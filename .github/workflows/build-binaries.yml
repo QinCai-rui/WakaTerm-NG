@@ -33,12 +33,6 @@ jobs:
             runner: macos-14  # Apple Silicon runner
             python-arch: arm64
 
-          # Windows builds
-          - os: windows
-            arch: x86_64
-            runner: windows-latest
-            python-arch: x64
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -63,20 +57,12 @@ jobs:
       - name: Create release artifact
         run: |
           mkdir -p release
-          # Copy both binaries
-          if [ "${{ matrix.os }}" = "windows" ]; then
-            cp binaries/wakaterm-${{ matrix.os }}-${{ matrix.arch }}.exe release/ 2>/dev/null || true
-            cp binaries/wakatermctl-${{ matrix.os }}-${{ matrix.arch }}.exe release/ 2>/dev/null || true
-            # Also copy distribution directories
-            cp -r binaries/wakaterm-dist release/ 2>/dev/null || true
-            cp -r binaries/wakatermctl-dist release/ 2>/dev/null || true
-          else
-            cp binaries/wakaterm-${{ matrix.os }}-${{ matrix.arch }} release/ 2>/dev/null || true
-            cp binaries/wakatermctl-${{ matrix.os }}-${{ matrix.arch }} release/ 2>/dev/null || true
-            # Also copy distribution directories
-            cp -r binaries/wakaterm-dist release/ 2>/dev/null || true  
-            cp -r binaries/wakatermctl-dist release/ 2>/dev/null || true
-          fi
+          # Copy both binaries (Unix only - no Windows support)
+          cp binaries/wakaterm-${{ matrix.os }}-${{ matrix.arch }} release/ 2>/dev/null || true
+          cp binaries/wakatermctl-${{ matrix.os }}-${{ matrix.arch }} release/ 2>/dev/null || true
+          # Also copy distribution directories
+          cp -r binaries/wakaterm-dist release/ 2>/dev/null || true  
+          cp -r binaries/wakatermctl-dist release/ 2>/dev/null || true
           cp README.md LICENSE release/
         shell: bash
 
@@ -109,13 +95,8 @@ jobs:
           for dir in */; do
             if [ -d "$dir" ]; then
               cd "$dir"
-              if ls wakaterm*.exe 1> /dev/null 2>&1; then
-                # Windows binary
-                zip -r "../../release/${dir%/}.zip" *
-              else
-                # Unix binary  
-                tar -czf "../../release/${dir%/}.tar.gz" *
-              fi
+              # Unix binaries only (no Windows support)
+              tar -czf "../../release/${dir%/}.tar.gz" *
               cd ..
             fi
           done
