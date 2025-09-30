@@ -160,8 +160,52 @@ download_binaries() {
     # Create temporary directory
     TEMP_DIR=$(mktemp -d)
     
-    local success_count=0
+    # Try to download the zip package first (GitHub Actions format)
+    local zip_filename="wakaterm-$PLATFORM-$ARCH.zip"
+    local download_url="https://github.com/${GITHUB_REPO}/releases/latest/download/${zip_filename}"
+    local zip_file="$TEMP_DIR/${zip_filename}"
     
+    log_info "Trying to download binary package: $download_url"
+    
+    local zip_downloaded=false
+    if command -v curl >/dev/null 2>&1; then
+        if curl -fsSL -o "$zip_file" "$download_url" 2>/dev/null; then
+            zip_downloaded=true
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if wget -q -O "$zip_file" "$download_url" 2>/dev/null; then
+            zip_downloaded=true
+        fi
+    fi
+    
+    if [[ "$zip_downloaded" == "true" ]]; then
+        log_success "Binary package downloaded successfully"
+        
+        # Extract the zip file
+        if command -v unzip >/dev/null 2>&1; then
+            log_info "Extracting binary package..."
+            cd "$TEMP_DIR"
+            if unzip -q "$zip_file"; then
+                log_success "Package extracted successfully"
+                # Check if wakaterm-dist directory exists
+                if [[ -d "wakaterm-dist" ]]; then
+                    log_info "Found wakaterm-dist directory with compiled modules"
+                else
+                    log_warning "wakaterm-dist directory not found in package"
+                fi
+                return
+            else
+                log_error "Failed to extract package"
+            fi
+        else
+            log_error "unzip command not found - cannot extract binary package"
+        fi
+    fi
+    
+    log_info "Zip package not available, trying individual binary downloads..."
+    
+    # Fallback to individual binary downloads (legacy method)
+    local success_count=0
     for binary_name in "${BINARIES[@]}"; do
         # Determine binary filename
         local binary_filename="${binary_name}-$PLATFORM-$ARCH"
@@ -328,31 +372,77 @@ install_binaries() {
     
     local installed_count=0
     
-    for binary_name in "${BINARIES[@]}"; do
-        local binary_filename="${binary_name}-$PLATFORM-$ARCH"
-        if [[ "$PLATFORM" == "windows" ]]; then
-            binary_filename="${binary_filename}.exe"
-        fi
+    # Check if we have the new zip package format (with wakaterm-dist)
+    if [[ -d "$TEMP_DIR/wakaterm-dist" ]]; then
+        log_info "Installing from zip package format..."
         
-        local temp_file="$TEMP_DIR/${binary_filename}"
+        # Create a shared directory for the compiled modules
+        local shared_dir="$HOME/.local/share/wakaterm-ng"
+        mkdir -p "$shared_dir"
         
-        if [[ ! -f "$temp_file" ]]; then
-            log_warning "$binary_name binary not found, skipping"
-            continue
-        fi
+        # Copy the wakaterm-dist directory
+        log_info "Installing compiled modules..."
+        cp -r "$TEMP_DIR/wakaterm-dist" "$shared_dir/"
         
-        local install_path="$INSTALL_DIR/$binary_name"
-        if [[ "$PLATFORM" == "windows" ]]; then
-            install_path="${install_path}.exe"
-        fi
+        # Install each binary wrapper
+        for binary_name in "${BINARIES[@]}"; do
+            local binary_filename="${binary_name}-$PLATFORM-$ARCH"
+            local temp_file="$TEMP_DIR/${binary_filename}"
+            local install_path="$INSTALL_DIR/$binary_name"
+            
+            if [[ -f "$temp_file" ]]; then
+                # Copy the wrapper script and make it executable
+                cp "$temp_file" "$install_path"
+                chmod +x "$install_path"
+                
+                # Update the wrapper to point to the correct shared location
+                if [[ "$binary_name" == "wakaterm" ]]; then
+                    # Fix the Python path in the wrapper
+                    sed -i "s|sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-dist'))|sys.path.insert(0, os.path.expanduser('$shared_dir/wakaterm-dist'))|" "$install_path"
+                elif [[ "$binary_name" == "wakatermctl" ]]; then
+                    # Fix the Python path in the wakatermctl wrapper
+                    sed -i "s|sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-dist'))|sys.path.insert(0, os.path.expanduser('$shared_dir/wakaterm-dist'))|" "$install_path"
+                    sed -i "s|os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-dist', 'wakatermctl')|os.path.expanduser('$shared_dir/wakaterm-dist/wakatermctl')|" "$install_path"
+                fi
+                
+                log_success "$binary_name installed to: $install_path"
+                ((installed_count++))
+            else
+                log_warning "$binary_name wrapper not found in package"
+            fi
+        done
         
-        # Copy binary to install directory
-        cp "$temp_file" "$install_path"
-        chmod +x "$install_path"
+        log_info "Compiled modules installed to: $shared_dir/wakaterm-dist"
+    else
+        # Legacy individual binary format
+        log_info "Installing from individual binary format..."
         
-        log_success "$binary_name installed to: $install_path"
-        ((installed_count++))
-    done
+        for binary_name in "${BINARIES[@]}"; do
+            local binary_filename="${binary_name}-$PLATFORM-$ARCH"
+            if [[ "$PLATFORM" == "windows" ]]; then
+                binary_filename="${binary_filename}.exe"
+            fi
+            
+            local temp_file="$TEMP_DIR/${binary_filename}"
+            
+            if [[ ! -f "$temp_file" ]]; then
+                log_warning "$binary_name binary not found, skipping"
+                continue
+            fi
+            
+            local install_path="$INSTALL_DIR/$binary_name"
+            if [[ "$PLATFORM" == "windows" ]]; then
+                install_path="${install_path}.exe"
+            fi
+            
+            # Copy binary to install directory
+            cp "$temp_file" "$install_path"
+            chmod +x "$install_path"
+            
+            log_success "$binary_name installed to: $install_path"
+            ((installed_count++))
+        done
+    fi
     
     if [[ $installed_count -eq 0 ]]; then
         log_error "No binaries were installed successfully"
@@ -405,8 +495,77 @@ cleanup() {
     fi
 }
 
+# Uninstall function
+uninstall_wakaterm() {
+    log_step "Uninstalling WakaTerm NG"
+    
+    local removed_count=0
+    
+    # Remove binary wrappers
+    for binary_name in "${BINARIES[@]}"; do
+        local install_path="$INSTALL_DIR/$binary_name"
+        if [[ -f "$install_path" ]]; then
+            rm -f "$install_path"
+            log_success "Removed $binary_name from $install_path"
+            ((removed_count++))
+        fi
+    done
+    
+    # Remove shared compiled modules directory
+    local shared_dir="$HOME/.local/share/wakaterm-ng"
+    if [[ -d "$shared_dir" ]]; then
+        rm -rf "$shared_dir"
+        log_success "Removed compiled modules from $shared_dir"
+    fi
+    
+    # Remove config directory if empty or ask user
+    if [[ -d "$CONFIG_DIR" ]]; then
+        if [[ -z "$(ls -A "$CONFIG_DIR" 2>/dev/null)" ]]; then
+            rmdir "$CONFIG_DIR" 2>/dev/null || true
+            log_success "Removed empty config directory"
+        else
+            log_info "Config directory $CONFIG_DIR contains files"
+            read -p "Do you want to remove config files as well? (y/N): " -r
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                rm -rf "$CONFIG_DIR"
+                log_success "Removed config directory"
+            else
+                log_info "Keeping config directory"
+            fi
+        fi
+    fi
+    
+    if [[ $removed_count -gt 0 ]]; then
+        log_success "WakaTerm NG uninstalled successfully"
+    else
+        log_warning "No WakaTerm binaries found to remove"
+    fi
+}
+
+# Show usage information
+show_usage() {
+    echo "WakaTerm NG Binary Installer"
+    echo ""
+    echo "Usage: $0 [COMMAND] [OPTIONS]"
+    echo ""
+    echo "Commands:"
+    echo "  install     Install WakaTerm NG (default)"
+    echo "  uninstall   Remove WakaTerm NG installation"
+    echo "  help        Show this help message"
+    echo ""
+    echo "Options:"
+    echo "  --python    Force Python source installation"
+    echo "  --binary    Force binary installation (default)"
+    echo ""
+    echo "Examples:"
+    echo "  $0              # Interactive installation"
+    echo "  $0 install      # Install with defaults"
+    echo "  $0 --python     # Install Python source version"
+    echo "  $0 uninstall    # Remove installation"
+}
+
 # Main installation function
-main() {
+install_wakaterm_main() {
     echo -e "${BLUE}${BOLD}"
     echo "🚀 WakaTerm NG Binary Installer"
     echo "==============================="
@@ -422,8 +581,10 @@ main() {
     # Pre-installation checks
     check_existing_installation
     
-    # Ask user for installation preference
-    ask_installation_type
+    # Ask user for installation preference (unless forced via command line)
+    if [[ "$INSTALL_TYPE" == "binary" ]]; then
+        ask_installation_type
+    fi
     
     setup_directories
     
@@ -448,6 +609,64 @@ main() {
     echo "  4. Set up shell integration (see README.md)"
     echo "  5. Start tracking your terminal activity!"
     echo ""
+}
+
+# Main function - handle commands and options
+main() {
+    local command="install"
+    
+    # Parse command line arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            install)
+                command="install"
+                shift
+                ;;
+            uninstall)
+                command="uninstall"
+                shift
+                ;;
+            help|--help|-h)
+                command="help"
+                shift
+                ;;
+            --python)
+                INSTALL_TYPE="python"
+                shift
+                ;;
+            --binary|--cython)
+                INSTALL_TYPE="binary"
+                shift
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Execute the appropriate command
+    case "$command" in
+        install)
+            install_wakaterm_main
+            ;;
+        uninstall)
+            echo -e "${BLUE}${BOLD}"
+            echo "🗑️  WakaTerm NG Uninstaller"
+            echo "=========================="
+            echo -e "${NC}"
+            uninstall_wakaterm
+            ;;
+        help)
+            show_usage
+            ;;
+        *)
+            log_error "Unknown command: $command"
+            show_usage
+            exit 1
+            ;;
+    esac
 }
 
 # Script entry point
