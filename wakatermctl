@@ -935,11 +935,6 @@ Examples:
     clear_parser = ignore_subparsers.add_parser("clear", help="Clear all ignore patterns")
     clear_parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
     
-    # Handle case where no arguments are provided - default to stats today
-    if len(sys.argv) == 1:
-        # Default to 'stats today' when no arguments provided
-        sys.argv.extend(['stats', 'today'])
-    
     # Parse arguments using the configured parser
     try:
         args = parser.parse_args()
@@ -947,11 +942,10 @@ Examples:
         # argparse calls sys.exit on error, let it handle help and errors
         return
     
-    # If no command specified but we have args, default to stats
+    # If no subcommand was provided, show help and exit
     if not hasattr(args, 'subcommand') or args.subcommand is None:
-        args.subcommand = 'stats'
-        if not hasattr(args, 'period'):
-            args.period = 'today'
+        parser.print_help()
+        return
     
 
     
