@@ -91,6 +91,63 @@ git commit -m "fix"     # → Detected as Git
 docker build .          # → Detected as Docker
 ```
 
+### WakaTime CLI Integration
+
+WakaTerm NG integrates seamlessly with the official WakaTime CLI (`wakatime-cli`) to send your terminal activity to your WakaTime dashboard (or compatible self-hosted WakaTime server). When you run a command, WakaTerm NG automatically calls the WakaTime CLI with detailed metadata about your activity.
+
+#### Example WakaTime CLI Call
+
+Here's what happens behind the scenes when you run `nano README.md` in your terminal:
+
+```bash
+/home/qincai/.wakatime/wakatime-cli \
+  --entity terminal://terminal-wakatime/nano \
+  --entity-type url \
+  --project terminal-wakatime \
+  --language Nano \
+  --time 1759201120.0 \
+  --plugin wakaterm-ng/1.4.0 \
+  --project-folder /home/qincai/terminal-wakatime \
+  --timeout 30 \
+  --alternate-branch testing \
+  --write \
+  --category coding
+```
+
+#### Breakdown of flags
+
+- **`--entity terminal://terminal-wakatime/nano`**: Custom URI scheme identifying the terminal activity. Format is `terminal://<project>/<base_command>`
+- **`--entity-type url`**: Tells WakaTime this is a URL entity (not a file), enabling proper categorisation of terminal activities (default `file` would be ignored)
+- **`--project terminal-wakatime`**: Project name auto-detected from directory name or Git repository
+- **`--language Nano`**: Language/tool detected from the base command (`nano` → text editor category)
+- **`--time 1759201120.0`**: Unix timestamp when the command was executed
+- **`--plugin wakaterm-ng/1.4.0`**: Identifies WakaTerm NG as the source plugin for analytics
+- **`--project-folder /home/qincai/terminal-wakatime`**: Full path to help WakaTime with project detection and organization
+- **`--timeout 30`**: Prevents hanging on network issues (30 second timeout)
+- **`--alternate-branch testing`**: Current Git branch if in a Git repository (helps with branch-based analytics)
+- **`--write`**: Indicates this command performs write operations (nano is an editor)
+- **`--category coding`**: WakaTime category classification (coding, debugging, building, etc.)
+
+#### Smart Detection Features
+
+WakaTerm NG's `_send_to_wakatime()` method performs several intelligent detections:
+
+1. **Project Detection**: Uses `get_project_name()` to find project roots by looking for:
+   - `.git`, `.svn`, `.hg` (version control)
+   - `package.json`, `Cargo.toml`, `pyproject.toml` (language-specific project files)
+   - `pom.xml`, `Gemfile`, `setup.py` (more project indicators)
+
+2. **Language Classification**: The `get_language_from_command()` method maps 100+ commands to appropriate languages:
+   - Text editors (`nano`, `vim`, `code`) → Editor-specific language
+   - Programming tools (`python`, `node`, `cargo`) → Programming language
+   - System commands (`ls`, `grep`, `systemctl`) → System categories
+
+3. **Write Operation Detection**: Commands like editors, build tools, and version control operations are marked with `--write`
+
+4. **Branch Awareness**: Automatically detects Git branches using `git rev-parse --abbrev-ref HEAD`
+
+This integration ensures your terminal activity appears meaningfully in WakaTime with proper project attribution, language classification, and time tracking.
+
 ### View Statistics
 
 Use the built-in `wakatermctl` command to view your terminal activity:
