@@ -1,0 +1,8 @@
+# Runtime dependencies for wakaterm.py
+# The script uses only Python standard library modules:
+# - os, sys, time, json, hashlib, argparse, subprocess
+# - pathlib, typing, datetime, tempfile, shutil, re
+# - No external dependencies required for runtime!
+
+# Build dependencies for creating cross-platform binaries
+pyinstaller>=6.0.0
