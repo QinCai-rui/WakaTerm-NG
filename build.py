@@ -20,6 +20,7 @@ class WakatermBuilder:
         self.dist_dir = self.root_dir / 'dist'
         self.build_dir = self.root_dir / 'build'
         self.binary_dir = self.root_dir / 'binaries'
+        self.build_type = 'cython'  # Default to Cython, can be changed to 'python'
         
         # Platform detection
         self.current_platform = self._detect_platform()
@@ -80,6 +81,39 @@ class WakatermBuilder:
         except FileNotFoundError:
             print(f"❌ {description} failed! Command not found: {cmd[0]}")
             return False
+    
+    def ask_build_type(self) -> None:
+        """Ask user for build type preference"""
+        if '--python' in sys.argv:
+            self.build_type = 'python'
+            print("🐍 Build type: Python source (from command line)")
+            return
+        elif '--cython' in sys.argv:
+            self.build_type = 'cython'
+            print("🚀 Build type: Cython compiled (from command line)")
+            return
+        
+        print("\n🏗️  Choose build type:")
+        print("  1) Cython compiled binaries (recommended - faster performance)")
+        print("  2) Python source package (easier development, no compilation)")
+        print()
+        
+        while True:
+            try:
+                choice = input("Enter your choice (1-2) [default: 1]: ").strip()
+                if choice == '' or choice == '1':
+                    self.build_type = 'cython'
+                    print("🚀 Selected: Cython compiled binaries")
+                    break
+                elif choice == '2':
+                    self.build_type = 'python'
+                    print("🐍 Selected: Python source package")
+                    break
+                else:
+                    print("❌ Invalid choice. Please enter 1 or 2.")
+            except (EOFError, KeyboardInterrupt):
+                print("\n🛑 Build cancelled by user")
+                sys.exit(1)
     
     def setup_environment(self) -> bool:
         """Set up the build environment"""
@@ -215,6 +249,91 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-dis
             binaries_built.append(wakatermctl_bin)
         
         return binaries_built[0] if binaries_built else None
+    
+    def build_python_package(self) -> Optional[Path]:
+        """Create Python source package without Cython compilation"""
+        print(f"🐍 Creating Python source package for {self.current_platform}-{self.current_arch}...")
+        
+        # Create binaries directory
+        self.binary_dir.mkdir(exist_ok=True)
+        
+        # Create source distribution directory
+        source_dist_dir = self.binary_dir / "wakaterm-python-dist"
+        if source_dist_dir.exists():
+            shutil.rmtree(source_dist_dir)
+        source_dist_dir.mkdir(parents=True)
+        
+        # Copy Python source files
+        source_files = ["wakaterm.py", "wakaterm_minimal.py", "ignore_filter.py", "wakatermctl"]
+        for src_file in source_files:
+            src_path = self.root_dir / src_file
+            if src_path.exists():
+                shutil.copy2(src_path, source_dist_dir)
+                print(f"   Copied: {src_file}")
+            else:
+                if src_file in ["wakaterm.py", "ignore_filter.py", "wakatermctl"]:
+                    print(f"❌ Required file missing: {src_file}")
+                    return None
+                else:
+                    print(f"⚠️  Optional file missing: {src_file}")
+        
+        # Create wrapper scripts
+        binary_name = f"wakaterm-{self.current_platform}-{self.current_arch}"
+        if self.current_platform == 'windows':
+            binary_name += '.exe'
+            # Windows batch wrapper
+            wrapper_path = self.binary_dir / binary_name
+            wrapper_content = f"""@echo off
+python "%~dp0wakaterm-python-dist\\wakaterm.py" %*
+"""
+            with open(wrapper_path, 'w') as f:
+                f.write(wrapper_content)
+        else:
+            # Unix shell wrapper
+            wrapper_path = self.binary_dir / binary_name
+            wrapper_content = f"""#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-python-dist'))
+import wakaterm
+wakaterm.main()
+"""
+            with open(wrapper_path, 'w') as f:
+                f.write(wrapper_content)
+            os.chmod(wrapper_path, 0o755)
+        
+        print(f"✅ wakaterm Python wrapper created: {wrapper_path}")
+        
+        # Create wakatermctl wrapper
+        wakatermctl_name = f"wakatermctl-{self.current_platform}-{self.current_arch}"
+        if self.current_platform == 'windows':
+            wakatermctl_name += '.exe'
+            wrapper_content = f"""@echo off
+python "%~dp0wakaterm-python-dist\\wakatermctl" %*
+"""
+        else:
+            wrapper_content = f"""#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-python-dist'))
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-python-dist', 'wakatermctl')) as f:
+    exec(f.read())
+"""
+        
+        wakatermctl_path = self.binary_dir / wakatermctl_name
+        with open(wakatermctl_path, 'w') as f:
+            f.write(wrapper_content)
+        
+        if self.current_platform != 'windows':
+            os.chmod(wakatermctl_path, 0o755)
+        
+        print(f"✅ wakatermctl Python wrapper created: {wakatermctl_path}")
+        
+        # Calculate and show package size
+        package_size = self._get_dir_size(source_dist_dir) / 1024
+        print(f"📊 Source package size: {package_size:.1f} KB")
+        
+        return wrapper_path
     
     def test_binary(self, binary_path: Path) -> bool:
         """Test the compiled binary"""
@@ -401,22 +520,40 @@ def main():
     parser.add_argument('--test', action='store_true', help='Test the binary after building')
     parser.add_argument('--clean', action='store_true', help='Clean build artifacts before building')
     parser.add_argument('--installer', action='store_true', help='Create universal installer script')
+    parser.add_argument('--python', action='store_true', help='Build Python source package instead of Cython binary')
+    parser.add_argument('--cython', action='store_true', help='Build Cython compiled binary (default)')
     
     args = parser.parse_args()
     
     builder = WakatermBuilder()
     
+    # Ask for build type if not specified via command line
+    if not args.python and not args.cython:
+        builder.ask_build_type()
+    elif args.python:
+        builder.build_type = 'python'
+    else:
+        builder.build_type = 'cython'
+    
     # Clean if requested
     if args.clean:
         builder.clean_build_artifacts()
     
-    # Setup environment
-    if not builder.setup_environment():
-        print("❌ Failed to set up build environment")
-        return 1
+    # Setup environment (only check Cython for Cython builds)
+    if builder.build_type == 'cython':
+        if not builder.setup_environment():
+            print("❌ Failed to set up build environment")
+            return 1
+    else:
+        print("🐍 Python source build - skipping Cython environment setup")
+        builder.binary_dir.mkdir(exist_ok=True)
     
-    # Build binary
-    binary_path = builder.build_binary(optimize=not args.no_optimize)
+    # Build based on selected type
+    if builder.build_type == 'python':
+        binary_path = builder.build_python_package()
+    else:
+        binary_path = builder.build_binary(optimize=not args.no_optimize)
+    
     if not binary_path:
         print("❌ Build failed")
         return 1
@@ -433,8 +570,14 @@ def main():
     
     print()
     print("🎉 Build completed successfully!")
-    print(f"📁 Binary location: {binary_path}")
-    print(f"🔧 To install: cp {binary_path} ~/.local/bin/wakaterm")
+    print(f"📁 Build location: {binary_path}")
+    
+    if builder.build_type == 'python':
+        print("🐍 Python source package created")
+        print(f"🔧 To install Python version: python -m pip install -e .")
+    else:
+        print("🚀 Cython compiled binary created")
+        print(f"🔧 To install binary: cp {binary_path} ~/.local/bin/wakaterm")
     
     return 0
 
