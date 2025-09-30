@@ -224,13 +224,31 @@ python -c "import sys; import os; sys.path.insert(0, os.path.join(os.path.dirnam
             with open(wrapper_path, 'w') as f:
                 f.write(wrapper_content)
         else:
-            # For Unix-like systems, create a shell wrapper
+            # For Unix-like systems, create a Python wrapper with better error handling
             wrapper_path = self.binary_dir / binary_name
             wrapper_content = f"""#!/usr/bin/env python3
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-dist'))
-import wakaterm
+
+# Add the distribution directory to Python path
+script_dir = os.path.dirname(os.path.abspath(__file__))
+dist_dir = os.path.join(script_dir, 'wakaterm-dist')
+sys.path.insert(0, dist_dir)
+
+try:
+    import wakaterm
+except ImportError as e:
+    print(f"Error: Could not import wakaterm module from {{dist_dir}}", file=sys.stderr)
+    print(f"Make sure the 'wakaterm-dist' directory is in the same location as this script.", file=sys.stderr)
+    print(f"Python version: {{sys.version}}", file=sys.stderr)
+    print(f"Available files in {{dist_dir}}:", file=sys.stderr)
+    try:
+        for f in os.listdir(dist_dir):
+            print(f"  {{f}}", file=sys.stderr)
+    except OSError:
+        print(f"  Could not list directory contents", file=sys.stderr)
+    print(f"Import error details: {{e}}", file=sys.stderr)
+    sys.exit(1)
 
 if __name__ == '__main__':
     wakaterm.main()
