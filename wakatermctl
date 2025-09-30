@@ -965,15 +965,20 @@ Examples:
             return
             
         # For stats commands, ensure we have all required attributes
-        stats_attrs = ['log_dir', 'debug', 'project', 'language', 'min_time', 'summary', 'export', 'json', 'period']
-        for attr in stats_attrs:
+        stats_defaults = {
+            'log_dir': None,
+            'debug': False,
+            'project': None,
+            'language': None,
+            'min_time': None,
+            'summary': None,
+            'export': None,
+            'json': None,
+            'period': 'today'
+        }
+        for attr, default in stats_defaults.items():
             if not hasattr(args, attr):
-                if attr == 'debug':
-                    setattr(args, attr, False)
-                elif attr == 'period':
-                    setattr(args, attr, 'today')
-                else:
-                    setattr(args, attr, None)
+                setattr(args, attr, default)
             
         # Initialize stats reader
         reader = LocalStatsReader(args.log_dir)
