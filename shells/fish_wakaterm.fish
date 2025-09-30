@@ -27,7 +27,7 @@ function wakaterm_track
     if test "$WAKATERM_DEBUG" = "1"
         echo "WAKATERM: Tracking command: $command (duration: $duration s)" >&2
         # In debug mode, run in foreground to capture errors
-        python3 "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" -- $command
+        python3 "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" --debug -- $command
     else
         # Run Python script in background to avoid blocking the shell
         # Use -- to separate options from the command arguments
