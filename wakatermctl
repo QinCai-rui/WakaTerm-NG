@@ -737,14 +737,15 @@ def handle_ignore_commands(args, use_colors: bool):
             print(f"{info_color}No ignore patterns configured{reset_color}")
             
     elif args.ignore_action == "test":
-        if ignore_filter.should_ignore(args.command):
+        test_command = getattr(args, 'test_command', getattr(args, 'command', None))
+        if ignore_filter.should_ignore(test_command):
             warn_color = Colors.RED if use_colors else ""
             reset_color = Colors.RESET if use_colors else ""
-            print(f"{warn_color}IGNORE: '{args.command}' would be ignored{reset_color}")
+            print(f"{warn_color}IGNORE: '{test_command}' would be ignored{reset_color}")
         else:
             success_color = Colors.GREEN if use_colors else ""
             reset_color = Colors.RESET if use_colors else ""
-            print(f"{success_color}TRACK: '{args.command}' would be tracked{reset_color}")
+            print(f"{success_color}TRACK: '{test_command}' would be tracked{reset_color}")
             
     elif args.ignore_action == "edit":
         ignore_file = ignore_filter.get_ignore_file_path()
@@ -804,11 +805,11 @@ def main():
         epilog="""
 Examples:
   # Stats commands
-  wakatermctl                    # Show today's stats
-  wakatermctl yesterday          # Show yesterday's stats  
-  wakatermctl last_7_days        # Show last week's stats
-  wakatermctl --no-color today   # Show stats without colors
-  wakatermctl --json today       # Output raw JSON data
+  wakatermctl stats              # Show today's stats
+  wakatermctl stats yesterday    # Show yesterday's stats  
+  wakatermctl stats last_7_days  # Show last week's stats
+  wakatermctl stats --no-color   # Show stats without colors
+  wakatermctl stats --json       # Output raw JSON data
   
   # Ignore pattern management  
   wakatermctl ignore add "git status"    # Add pattern to ignore
@@ -928,23 +929,59 @@ Examples:
     clear_parser = ignore_subparsers.add_parser("clear", help="Clear all ignore patterns")
     clear_parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
     
-    args = parser.parse_args()
-    
-    # Handle case where no subcommand is provided (default to stats)
-    if args.command is None:
-        # If first positional arg looks like a period, treat as stats command
-        if len(sys.argv) > 1 and sys.argv[1] in ["today", "yesterday", "last_7_days", "last_30_days", "last_6_months", "last_year"]:
-            # Re-parse with stats subcommand
-            sys.argv.insert(1, "stats")
-            args = parser.parse_args()
+    if len(sys.argv) == 1:
+        # No arguments - show help
+        parser.print_help()
+        return
+    elif len(sys.argv) >= 2 and sys.argv[1] == "stats":
+        # Stats command - parse the rest
+        args = argparse.Namespace()
+        args.command = "stats"
+        
+        # Parse stats-specific arguments
+        stats_parser = argparse.ArgumentParser()
+        stats_parser.add_argument("period", nargs="?", default="today", 
+                                 choices=["today", "yesterday", "last_7_days", "last_30_days", "last_6_months", "last_year"])
+        stats_parser.add_argument("--json", action="store_true")
+        stats_parser.add_argument("--no-color", action="store_true")
+        stats_parser.add_argument("--log-dir")
+        stats_parser.add_argument("--debug", action="store_true")
+        stats_parser.add_argument("--project")
+        stats_parser.add_argument("--language")
+        stats_parser.add_argument("--command")
+        stats_parser.add_argument("--min-time", type=int)
+        stats_parser.add_argument("--summary", action="store_true")
+        stats_parser.add_argument("--export", choices=["csv", "json", "markdown"])
+        
+        stats_args = stats_parser.parse_args(sys.argv[2:])  # Skip 'wakatermctl' and 'stats'
+        
+        # Copy stats args to main args
+        for key, value in vars(stats_args).items():
+            setattr(args, key, value)
+            
+    elif len(sys.argv) >= 2 and sys.argv[1] == "ignore":
+        # Handle ignore commands manually
+        args = argparse.Namespace()
+        args.command = "ignore"
+        args.no_color = "--no-color" in sys.argv
+        
+        if len(sys.argv) >= 3:
+            args.ignore_action = sys.argv[2]
+            if args.ignore_action == "add" and len(sys.argv) >= 4:
+                args.pattern = sys.argv[3]
+            elif args.ignore_action == "remove" and len(sys.argv) >= 4:
+                args.pattern = sys.argv[3]
+            elif args.ignore_action == "test" and len(sys.argv) >= 4:
+                args.test_command = sys.argv[3]
+            elif args.ignore_action == "clear":
+                args.yes = "--yes" in sys.argv
         else:
-            # Default to stats today
-            args.command = "stats"
-            args.period = "today"
-            # Set default values for stats
-            for attr in ["json", "debug", "project", "language", "command", "min_time", "summary", "export", "log_dir"]:
-                if not hasattr(args, attr):
-                    setattr(args, attr, None)
+            print("Usage: wakatermctl ignore {add,remove,list,test,edit,clear} ...", file=sys.stderr)
+            return
+    else:
+        # Unknown command or help
+        parser.print_help()
+        return
     
     # Disable colors if requested or if not in a terminal
     use_colors = not args.no_color and sys.stdout.isatty()
