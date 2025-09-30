@@ -89,11 +89,17 @@ clean:
 # Install binary to local bin
 .PHONY: install
 install: build
-	@echo "📥 Installing wakaterm binary..."
+	@echo "📥 Installing wakaterm binaries..."
 	@mkdir -p ~/.local/bin
-	@cp $(BINARY_DIR)/$(BINARY_NAME)-$(BINARY_SUFFIX) ~/.local/bin/$(BINARY_NAME)
-	@chmod +x ~/.local/bin/$(BINARY_NAME)
-	@echo "✅ Installed to ~/.local/bin/$(BINARY_NAME)"
+	@cp $(BINARY_DIR)/$(BINARY_NAME)-$(BINARY_SUFFIX) ~/.local/bin/$(BINARY_NAME) 2>/dev/null || \
+		echo "⚠️  wakaterm binary not found"
+	@cp $(BINARY_DIR)/wakatermctl-$(BINARY_SUFFIX) ~/.local/bin/wakatermctl 2>/dev/null || \
+		echo "⚠️  wakatermctl binary not found"
+	@cp -r $(BINARY_DIR)/wakaterm-dist ~/.local/share/ 2>/dev/null || true
+	@cp -r $(BINARY_DIR)/wakatermctl-dist ~/.local/share/ 2>/dev/null || true
+	@chmod +x ~/.local/bin/$(BINARY_NAME) 2>/dev/null || true
+	@chmod +x ~/.local/bin/wakatermctl 2>/dev/null || true
+	@echo "✅ Binaries installed to ~/.local/bin/"
 	@echo "💡 Make sure ~/.local/bin is in your PATH"
 
 # Create universal installer
@@ -118,10 +124,12 @@ package: clean build installer
 size:
 	@echo "📊 Binary size information:"
 	@echo "Python script sizes:"
-	@ls -lh wakaterm.py ignore_filter.py | awk '{print "  " $$9 ": " $$5}'
+	@ls -lh wakaterm.py ignore_filter.py wakatermctl | awk '{print "  " $$9 ": " $$5}'
 	@if [ -d $(BINARY_DIR) ]; then \
 		echo "Compiled binary sizes:"; \
-		ls -lh $(BINARY_DIR)/ | tail -n +2 | awk '{print "  " $$9 ": " $$5}'; \
+		ls -lh $(BINARY_DIR)/ | tail -n +2 | grep -v dist | awk '{print "  " $$9 ": " $$5}'; \
+		echo "Distribution directory sizes:"; \
+		du -sh $(BINARY_DIR)/*-dist/ 2>/dev/null | sed 's/^/  /' || true; \
 	fi
 
 # Development helpers
@@ -134,12 +142,14 @@ dev-setup: install-deps
 .PHONY: benchmark
 benchmark:
 	@echo "⚡ Running performance benchmark..."
-	@echo "Python version:"
-	@time $(PYTHON) wakaterm.py test_command --debug 2>/dev/null || true
-	@if [ -f $(BINARY_DIR)/$(BINARY_NAME)-$(BINARY_SUFFIX) ]; then \
-		echo "Binary version:"; \
-		time $(BINARY_DIR)/$(BINARY_NAME)-$(BINARY_SUFFIX) test_command --debug 2>/dev/null || true; \
-	fi
+	@echo "Python wakaterm:"
+	@time $(PYTHON) wakaterm.py --help >/dev/null 2>&1 || true
+	@echo "Binary wakaterm:"
+	@time $(BINARY_DIR)/$(BINARY_NAME)-$(BINARY_SUFFIX) --help >/dev/null 2>&1 || echo "Binary not found"
+	@echo "Python wakatermctl:"
+	@time $(PYTHON) wakatermctl --help >/dev/null 2>&1 || true  
+	@echo "Binary wakatermctl:"
+	@time $(BINARY_DIR)/wakatermctl-$(BINARY_SUFFIX) --help >/dev/null 2>&1 || echo "Binary not found"
 
 # Validation targets
 .PHONY: validate

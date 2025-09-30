@@ -111,7 +111,7 @@ class WakatermBuilder:
         # Build both wakaterm and wakatermctl
         binaries_built = []
         
-        for spec_name, binary_name in [('wakaterm-fast.spec', 'wakaterm'), ('wakatermctl-fast.spec', 'wakatermctl')]:
+        for spec_name, binary_name in [('wakaterm-fast.spec', 'wakaterm'), ('wakatermctl-simple.spec', 'wakatermctl')]:
             print(f"  Building {binary_name}...")
             
             # Prepare PyInstaller command
