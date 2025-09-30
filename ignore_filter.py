@@ -6,6 +6,7 @@ A module to handle .gitignore-style pattern matching for command filtering
 
 import os
 import re
+import sys
 from pathlib import Path
 from typing import List, Optional
 
@@ -90,7 +91,7 @@ class CommandIgnoreFilter:
             
             # Only log in debug mode
             if os.environ.get('WAKATERM_DEBUG', '').lower() in ('1', 'true', 'yes', 'on'):
-                print(f"WAKATERM DEBUG: Error loading ignore patterns: {e}", file=os.sys.stderr)
+                print(f"WAKATERM DEBUG: Error loading ignore patterns: {e}", file=sys.stderr)
     
     def _create_default_ignore_file(self) -> None:
         """Create a default ignore file with common patterns."""
@@ -155,7 +156,7 @@ debug_*
         except Exception as e:
             # If we can't create the default file, continue silently
             if os.environ.get('WAKATERM_DEBUG', '').lower() in ('1', 'true', 'yes', 'on'):
-                print(f"WAKATERM DEBUG: Could not create default ignore file: {e}", file=os.sys.stderr)
+                print(f"WAKATERM DEBUG: Could not create default ignore file: {e}", file=sys.stderr)
     
     def _compile_patterns(self) -> None:
         """Compile patterns into regular expressions for efficient matching."""
@@ -169,7 +170,7 @@ debug_*
             except re.error:
                 # Skip invalid patterns
                 if os.environ.get('WAKATERM_DEBUG', '').lower() in ('1', 'true', 'yes', 'on'):
-                    print(f"WAKATERM DEBUG: Invalid ignore pattern: {pattern}", file=os.sys.stderr)
+                    print(f"WAKATERM DEBUG: Invalid ignore pattern: {pattern}", file=sys.stderr)
         
         for pattern in self.negation_patterns:
             try:
@@ -177,7 +178,7 @@ debug_*
                 self._compiled_negation_patterns.append(re.compile(regex, re.IGNORECASE))
             except re.error:
                 if os.environ.get('WAKATERM_DEBUG', '').lower() in ('1', 'true', 'yes', 'on'):
-                    print(f"WAKATERM DEBUG: Invalid negation pattern: {pattern}", file=os.sys.stderr)
+                    print(f"WAKATERM DEBUG: Invalid negation pattern: {pattern}", file=sys.stderr)
     
     def _pattern_to_regex(self, pattern: str) -> str:
         """
@@ -270,7 +271,7 @@ debug_*
             
         except Exception as e:
             if os.environ.get('WAKATERM_DEBUG', '').lower() in ('1', 'true', 'yes', 'on'):
-                print(f"WAKATERM DEBUG: Could not add pattern '{pattern}': {e}", file=os.sys.stderr)
+                print(f"WAKATERM DEBUG: Could not add pattern '{pattern}': {e}", file=sys.stderr)
             return False
     
     def remove_pattern(self, pattern: str) -> bool:
@@ -311,7 +312,7 @@ debug_*
             
         except Exception as e:
             if os.environ.get('WAKATERM_DEBUG', '').lower() in ('1', 'true', 'yes', 'on'):
-                print(f"WAKATERM DEBUG: Could not remove pattern '{pattern}': {e}", file=os.sys.stderr)
+                print(f"WAKATERM DEBUG: Could not remove pattern '{pattern}': {e}", file=sys.stderr)
             return False
     
     def list_patterns(self) -> List[str]:
