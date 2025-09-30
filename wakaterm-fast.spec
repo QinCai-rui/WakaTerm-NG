@@ -63,7 +63,7 @@ a = Analysis(
         
         # Other unused modules
         'webbrowser', 'calendar',
-        'mmap', 'threading', 'queue', '_queue',
+        'mmap', 'queue', '_queue',
         'typing_extensions',
         'encodings.idna', 'encodings.punycode',
         'ctypes', 'ctypes.util', 'ctypes.wintypes',

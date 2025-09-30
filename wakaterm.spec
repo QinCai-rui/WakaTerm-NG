@@ -46,7 +46,7 @@ a = Analysis(
         'distutils', 'setuptools', 'pkg_resources',
         'bz2', 'lzma', 'gzip', 'zipfile', 'tarfile',
         'webbrowser', 'calendar', 'locale',
-        'mmap', 'signal', 'threading', 'queue',
+        'mmap', 'signal', 'queue',
         'collections.abc', 'typing_extensions',
     ],
     win_no_prefer_redirects=False,

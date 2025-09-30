@@ -7,18 +7,13 @@ A terminal plugin that logs command usage to local files for offline tracking
 import os
 import sys
 import time
-
-# PERFORMANCE: Lazy imports to reduce startup time
-def lazy_imports():
-    """Import heavy modules only when needed"""
-    global json, hashlib, argparse, subprocess, Path, Optional, List, Dict, datetime
-    import json
-    import hashlib
-    import argparse
-    import subprocess
-    from pathlib import Path
-    from typing import Optional, List, Dict
-    from datetime import datetime
+import json
+import hashlib
+import argparse
+import subprocess
+from pathlib import Path
+from datetime import datetime
+from typing import Optional, List, Dict
 
 # Import ignore filter module with fallback
 try:
@@ -38,10 +33,6 @@ class TerminalTracker:
     """Main terminal tracking class that logs to local files"""
     
     def __init__(self, log_dir: Optional[str] = None):
-        # PERFORMANCE: Lazy import Path only when needed
-        if 'Path' not in globals():
-            lazy_imports()
-        
         self.log_dir = Path(log_dir or os.path.expanduser('~/.local/share/wakaterm-logs'))
         
         # Initialise the ignore filter
@@ -209,9 +200,6 @@ class TerminalTracker:
     def _get_git_branch(self, cwd: str) -> Optional[str]:
         """Get the current Git branch if in a Git repository"""
         try:
-            # PERFORMANCE: Import subprocess only when needed
-            if 'subprocess' not in globals():
-                lazy_imports()
             result = subprocess.run(
                 ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
                 cwd=cwd,
