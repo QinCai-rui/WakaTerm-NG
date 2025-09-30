@@ -1,84 +1,66 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 """
-PyInstaller spec file for WakaTerm NG - OPTIMIZED FOR STARTUP SPEED
-Uses --onedir mode for fastest possible startup time
+PyInstaller spec file for WakaTerm NG MINIMAL - ULTRA-OPTIMIZED FOR SPEED
+Uses the minimal wakaterm_minimal.py for fastest possible startup
 """
 
 import sys
-from pathlib import Path
 
-# Build configuration
+# Build configuration  
 block_cipher = None
 
-# SPEED-OPTIMIZED Analysis 
+# ULTRA-MINIMAL Analysis - only include what's absolutely necessary
 a = Analysis(
-    ['wakaterm.py'],
+    ['wakaterm_minimal.py'],
     pathex=['.'],
     binaries=[],
     datas=[],
-    hiddenimports=['ignore_filter'],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # Only exclude heavy GUI and ML frameworks that are definitely not needed
+        # Exclude everything we can
         'tkinter', 'turtle', '_tkinter',
         'matplotlib', 'numpy', 'scipy', 'pandas',
         'PIL', 'Pillow', 'PyQt5', 'PyQt6', 'PySide2', 'PySide6',
         'jupyter', 'ipython', 'notebook',
-        
-        # Testing frameworks - not needed in production
-        'pytest', 'unittest.mock', 'doctest',
+        'pytest', 'unittest', 'doctest', 'test',
         'pdb', 'cProfile', 'profile',
-        
-        # Heavy network protocols we definitely don't use
         'email', 'ftplib', 'poplib', 'imaplib', 'nntplib', 'smtplib',
-        'xmlrpc', 'wsgiref',
-        
-        # Audio/Video - not needed
+        'xmlrpc', 'wsgiref', 'http.server',
         'wave', 'aifc', 'sunau', 'sndhdr', 'ossaudiodev', 'audioop',
-        
-        # XML processing - not needed
         'xml.etree', 'xml.dom', 'xml.parsers', 'xml.sax',
-        
-        # Heavy async frameworks - not needed
-        'asyncio', 'concurrent.futures',
-        
-        # Databases - not needed
+        'asyncio', 'concurrent.futures', 'multiprocessing',
         'sqlite3', 'dbm',
-        
-        # Build tools - not needed at runtime
         'distutils', 'setuptools', 'pkg_resources',
-        
-        # Compression we don't use
         'bz2', 'lzma',
-        
-        # Other truly unused modules
-        'webbrowser',
-        'pprint',
-        'socketserver',
+        'webbrowser', 'pprint', 'socketserver',
         'urllib3', 'requests', 'certifi',
+        'typing', 'typing_extensions',
+        'argparse',  # We don't use argparse in minimal version
+        'ignore_filter',  # Not used in minimal
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
-    noarchive=True,  # Faster startup
+    noarchive=True,
 )
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-# ONEDIR mode for fastest startup
+# Use onedir for fastest startup
 exe = EXE(
     pyz,
     a.scripts,
     [],
     exclude_binaries=True,
-    name='wakaterm',
+    name='wakaterm-minimal',
     debug=False,
     bootloader_ignore_signals=False,
     strip=True,
-    upx=False,  # UPX slows startup
+    upx=False,
     runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
@@ -96,5 +78,5 @@ coll = COLLECT(
     strip=True,
     upx=False,
     upx_exclude=[],
-    name='wakaterm'
+    name='wakaterm-minimal'
 )
