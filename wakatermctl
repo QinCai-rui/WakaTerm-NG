@@ -10,6 +10,8 @@ import os
 import sys
 import json
 import argparse
+import subprocess
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -759,7 +761,7 @@ def handle_ignore_commands(args, use_colors: bool):
         if not editor:
             # Try common editors
             for cmd in ['nano', 'vim', 'vi', 'emacs', 'code']:
-                if os.system(f'command -v {cmd} >/dev/null 2>&1') == 0:
+                if shutil.which(cmd) is not None:
                     editor = cmd
                     break
         
@@ -767,7 +769,7 @@ def handle_ignore_commands(args, use_colors: bool):
             info_color = Colors.BLUE if use_colors else ""
             reset_color = Colors.RESET if use_colors else ""
             print(f"{info_color}Opening {ignore_file} in {editor}...{reset_color}")
-            os.system(f'{editor} "{ignore_file}"')
+            subprocess.run([editor, ignore_file])
         else:
             warn_color = Colors.YELLOW if use_colors else ""
             reset_color = Colors.RESET if use_colors else ""
