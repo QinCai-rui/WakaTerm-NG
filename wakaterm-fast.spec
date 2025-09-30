@@ -45,7 +45,7 @@ a = Analysis(
         'codecs', 'encodings.idna', 'encodings.punycode',
         'ctypes', 'ctypes.util', 'ctypes.wintypes',
         'decimal', 'fractions', 'statistics',
-        'pprint', 'reprlib', 'copy', 'deepcopy',
+        'pprint', 'copy', 'deepcopy',  # reprlib needed by collections
         'socket', 'socketserver', 'selectors',
         'logging', 'logging.config', 'logging.handlers',
         'urllib', 'urllib3', 'requests', 'certifi',
