@@ -13,15 +13,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux builds
+          # Linux x86_64 build
           - os: linux
             arch: x86_64
             runner: ubuntu-latest
             python-arch: x64
-          - os: linux  
-            arch: arm64
-            runner: ubuntu-latest
-            python-arch: x64  # Cross-compile
+          
+          # Note: Linux ARM64 builds require native ARM64 runners or QEMU emulation
+          # which are not available in standard GitHub Actions. Users can build locally
+          # on ARM64 systems using: python build.py
 
           # macOS builds
           - os: macos
@@ -30,7 +30,7 @@ jobs:
             python-arch: x64
           - os: macos
             arch: arm64
-            runner: macos-14  # Apple Silicon runner
+            runner: macos-14  # Apple Silicon runner (M1/M2)
             python-arch: arm64
 
     steps:
