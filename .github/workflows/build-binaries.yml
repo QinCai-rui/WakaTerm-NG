@@ -5,6 +5,9 @@ on:
     types: [published]
   workflow_dispatch:
 
+permissions:
+  contents: write  # Required to upload release assets
+
 jobs:
   build:
     name: Build ${{ matrix.os }}-${{ matrix.arch }}
@@ -18,40 +21,71 @@ jobs:
             arch: x86_64
             runner: ubuntu-latest
             python-arch: x64
+            use_qemu: false
           
-          # Note: Linux ARM64 builds require native ARM64 runners or QEMU emulation
-          # which are not available in standard GitHub Actions. Users can build locally
-          # on ARM64 systems using: python build.py
+          # Linux ARM64 build using QEMU emulation
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            python-arch: arm64
+            use_qemu: true
 
           # macOS builds
           - os: macos
             arch: x86_64
             runner: macos-13  # Intel runner
             python-arch: x64
+            use_qemu: false
           - os: macos
             arch: arm64
             runner: macos-14  # Apple Silicon runner (M1/M2)
             python-arch: arm64
+            use_qemu: false
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up QEMU
+        if: matrix.use_qemu
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Python (Native)
+        if: ${{ !matrix.use_qemu }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           architecture: ${{ matrix.python-arch }}
 
-      - name: Install dependencies
+      - name: Build with QEMU (ARM64 Linux)
+        if: matrix.use_qemu
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            python:3.11-slim \
+            bash -c "
+              apt-get update && apt-get install -y gcc g++ make
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+              python build.py
+              python build.py --test
+            "
+
+      - name: Install dependencies (Native)
+        if: ${{ !matrix.use_qemu }}
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Build binary
+      - name: Build binary (Native)
+        if: ${{ !matrix.use_qemu }}
         run: python build.py
 
-      - name: Test binary
+      - name: Test binary (Native)
+        if: ${{ !matrix.use_qemu }}
         run: python build.py --test
 
       - name: Create release artifact
