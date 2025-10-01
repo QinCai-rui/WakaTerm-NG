@@ -35,24 +35,24 @@ track_state() {
     python3 -c "
 import json, sys
 try:
-    with open('$STATE_FILE', 'r') as f:
+    with open(\"$STATE_FILE\", 'r') as f:
         data = json.load(f)
     
-    if '$category' not in data:
-        data['$category'] = []
+    if \"$category\" not in data:
+        data[\"$category\"] = []
     
-    entry = '$item'
-    if '$backup_path':
-        entry = {'path': '$item', 'backup': '$backup_path'}
+    entry = \"$item\"
+    if \"$backup_path\":
+        entry = {'path': \"$item\", 'backup': \"$backup_path\"}
     
-    if entry not in data['$category']:
-        data['$category'].append(entry)
+    if entry not in data[\"$category\"]:
+        data[\"$category\"].append(entry)
     
-    with open('$STATE_FILE', 'w') as f:
+    with open(\"$STATE_FILE\", 'w') as f:
         json.dump(data, f, indent=2)
-except Exception:
-    pass  # Silently fail to avoid breaking installation
-"
+except Exception as e:
+    sys.exit(0)  # Exit successfully to avoid breaking installation
+" || true
 }
 
 # Create backup of file before modification
