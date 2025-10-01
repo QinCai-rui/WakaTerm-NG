@@ -179,10 +179,14 @@ install_prebuilt_binary() {
     
     # Install shell integration files
     log "Calling install_shell_files..."
-    if install_shell_files; then
+    set +e  # Temporarily disable exit on error
+    install_shell_files
+    local shell_result=$?
+    set -e  # Re-enable exit on error
+    if [[ $shell_result -eq 0 ]]; then
         success "Shell integration installed successfully"
     else
-        warn "Shell integration installation failed, but continuing..."
+        warn "Shell integration installation failed (exit code: $shell_result), but continuing..."
     fi
     
     # Track installation type
