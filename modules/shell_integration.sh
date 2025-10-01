@@ -10,16 +10,20 @@ setup_shell_integration() {
     case "$shell_name" in
         "bash")
             setup_bash_integration
+            return $?
             ;;
         "zsh")
             setup_zsh_integration
+            return $?
             ;;
         "fish")
             setup_fish_integration
+            return $?
             ;;
         *)
             warn "Unsupported shell: $shell_name"
             warn "Please manually source the appropriate shell integration file."
+            return 0
             ;;
     esac
 }

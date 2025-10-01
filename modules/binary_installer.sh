@@ -233,6 +233,7 @@ EOF
     track_state "platform" "$platform-$arch"
     
     success "Pre-built binary installation complete!"
+    return 0
 }
 
 # Download and install shell integration files
@@ -313,4 +314,5 @@ install_shell_files() {
     fi
     
     success "Shell integration files installed successfully"
+    return 0
 }
