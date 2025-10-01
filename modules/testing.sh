@@ -39,9 +39,11 @@ test_installation() {
 
     if [[ "$wakaterm_ok" == "true" || "$wakatermctl_ok" == "true" ]]; then
         success "WakaTerm NG installation tests passed (at least one binary functional)"
+        return 0
     else
         error "Installation test failed: no functional binaries found"
-        exit 1
+        warn "Installation completed but tests failed - please check manually"
+        return 1
     fi
 }
 

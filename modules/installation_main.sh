@@ -7,10 +7,11 @@ install_wakaterm() {
     # Handle Python source installation
     if [[ "${INSTALL_TYPE:-binary}" == "python" ]]; then
         install_python_source
-        return
+        return $?
     fi
     
     # For binary mode, try to download pre-built binaries first
     # If that fails, fall back to source installation
     install_prebuilt_binary
+    return $?
 }
