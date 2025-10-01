@@ -39,36 +39,69 @@ done
 
 # Ask user for installation type preference (if not already set by command line)
 ask_installation_type() {
-    # Skip prompt if already set via command line or in non-interactive mode
-    if [[ "$FORCE_YES" == "1" || "$INSTALL_TYPE" != "binary" ]]; then
+    # Skip prompt if already set via command line
+    if [[ "$FORCE_YES" == "1" ]]; then
+        # Show selected type when auto-confirming
+        case "$INSTALL_TYPE" in
+            "binary")
+                printf "\033[0;34mSelected: Cython compiled binaries (auto-confirmed)\033[0m\n"
+                ;;
+            "python")
+                printf "\033[0;34mSelected: Python source files (auto-confirmed)\033[0m\n"
+                ;;
+        esac
         return 0
     fi
     
-    if [[ -t 0 ]]; then  # Check if stdin is a terminal (interactive)
-        printf "\n\033[0;34mChoose your installation type:\033[0m\n"
-        printf "  1) Cython compiled binaries (recommended - faster performance, smaller size)\n"
-        printf "  2) Python source files (easier to modify, requires Python runtime)\n"
-        printf "\n"
-        
-        while true; do
-            read -p "Enter your choice (1-2) [default: 1]: " -r choice
-            case "${choice:-1}" in
-                1)
-                    INSTALL_TYPE="binary"
-                    printf "\033[0;34mSelected: Cython compiled binaries\033[0m\n"
-                    break
-                    ;;
-                2)
-                    INSTALL_TYPE="python"
-                    printf "\033[0;34mSelected: Python source files\033[0m\n"
-                    break
-                    ;;
-                *)
-                    printf "\033[0;33mInvalid choice. Please enter 1 or 2.\033[0m\n"
-                    ;;
-            esac
-        done
+    # Skip prompt if installation type was set via command line args
+    if [[ "$INSTALL_TYPE" != "binary" ]]; then
+        printf "\033[0;34mSelected: Python source files (command line option)\033[0m\n"
+        return 0
     fi
+    
+    # Check if we have access to a terminal for interactive input
+    # Use /dev/tty if available (works even when script is piped)
+    local input_source=""
+    if [[ -r /dev/tty ]]; then
+        input_source="/dev/tty"
+    elif [[ -t 0 ]]; then
+        input_source=""  # Use stdin (normal case)
+    else
+        # No terminal available - use default
+        printf "\033[0;34mSelected: Cython compiled binaries (default - no terminal available)\033[0m\n"
+        return 0
+    fi
+    
+    printf "\n\033[0;34mChoose your installation type:\033[0m\n"
+    printf "  1) Cython compiled binaries (recommended - faster performance, smaller size)\n"
+    printf "  2) Python source files (easier to modify, requires Python runtime)\n"
+    printf "\n"
+    
+    while true; do
+        if [[ -n "$input_source" ]]; then
+            # Read from /dev/tty when piped
+            read -p "Enter your choice (1-2) [default: 1]: " -r choice < "$input_source"
+        else
+            # Read from stdin when running normally
+            read -p "Enter your choice (1-2) [default: 1]: " -r choice
+        fi
+        
+        case "${choice:-1}" in
+            1)
+                INSTALL_TYPE="binary"
+                printf "\033[0;34mSelected: Cython compiled binaries\033[0m\n"
+                break
+                ;;
+            2)
+                INSTALL_TYPE="python"
+                printf "\033[0;34mSelected: Python source files\033[0m\n"
+                break
+                ;;
+            *)
+                printf "\033[0;33mInvalid choice. Please enter 1 or 2.\033[0m\n"
+                ;;
+        esac
+    done
 }
 
 # Source all module files
