@@ -5,10 +5,16 @@
 set -g wakaterm_dir "$HOME/.local/share/wakaterm"
 set -g wakaterm_python "$wakaterm_dir/wakaterm.py"
 
-# Check if wakaterm.py exists
-if not test -f "$wakaterm_python"
+# Check if wakaterm.py exists (could be a Python file or a symlink to binary)
+if not test -e "$wakaterm_python"
     echo "Warning: wakaterm.py not found at $wakaterm_python" >&2
     exit 1
+end
+
+# Detect if this is a compiled binary or Python script
+set -g wakaterm_is_binary 0
+if test -x "$wakaterm_python"; and not grep -q "^#!.*python" "$wakaterm_python" 2>/dev/null
+    set -g wakaterm_is_binary 1
 end
 
 # Function to send command to wakatime (using Python script)
@@ -27,12 +33,21 @@ function wakaterm_track
     if test "$WAKATERM_DEBUG" = "1"
         echo "WAKATERM: Tracking command: $command (duration: $duration s)" >&2
         # In debug mode, run in foreground to capture errors
-        python3 "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" --debug -- $command
+        if test "$wakaterm_is_binary" = "1"
+            eval "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" --debug -- $command
+        else
+            python3 "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" --debug -- $command
+        end
     else
-        # Run Python script in background to avoid blocking the shell
+        # Run in background to avoid blocking the shell
         # Use -- to separate options from the command arguments
-        python3 "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" -- $command >/dev/null 2>&1 &
-        disown
+        if test "$wakaterm_is_binary" = "1"
+            eval "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" -- $command >/dev/null 2>&1 &
+            disown
+        else
+            python3 "$wakaterm_python" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" -- $command >/dev/null 2>&1 &
+            disown
+        end
     end
 end
 

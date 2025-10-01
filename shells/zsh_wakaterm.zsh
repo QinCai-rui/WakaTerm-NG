@@ -6,10 +6,16 @@
 WAKATERM_DIR="$HOME/.local/share/wakaterm"
 WAKATERM_PYTHON="${WAKATERM_DIR}/wakaterm.py"
 
-# Check if wakaterm.py exists
-if [[ ! -f "$WAKATERM_PYTHON" ]]; then
+# Check if wakaterm.py exists (could be a Python file or a symlink to binary)
+if [[ ! -e "$WAKATERM_PYTHON" ]]; then
     echo "Warning: wakaterm.py not found at $WAKATERM_PYTHON" >&2
     return 1
+fi
+
+# Detect if this is a compiled binary or Python script
+WAKATERM_IS_BINARY=0
+if [[ -x "$WAKATERM_PYTHON" ]] && ! grep -q "^#!.*python" "$WAKATERM_PYTHON" 2>/dev/null; then
+    WAKATERM_IS_BINARY=1
 fi
 
 # Function to send command to wakatime
@@ -29,10 +35,18 @@ wakaterm_track() {
     if [[ "$WAKATERM_DEBUG" == "1" ]]; then
         echo "WAKATERM: Tracking command: $command (duration: ${duration}s)" >&2
         # In debug mode, run in foreground to capture errors
-        python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" --debug "$command"
+        if [[ $WAKATERM_IS_BINARY -eq 1 ]]; then
+            "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" --debug "$command"
+        else
+            python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" --debug "$command"
+        fi
     else
         # Run in background to avoid blocking the shell
-        (python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" "$command" >/dev/null 2>&1 &) 2>/dev/null
+        if [[ $WAKATERM_IS_BINARY -eq 1 ]]; then
+            ("$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" "$command" >/dev/null 2>&1 &) 2>/dev/null
+        else
+            (python3 "$WAKATERM_PYTHON" --cwd "$cwd" --timestamp "$timestamp" --duration "$duration" "$command" >/dev/null 2>&1 &) 2>/dev/null
+        fi
     fi
 }
 
