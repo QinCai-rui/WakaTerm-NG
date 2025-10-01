@@ -744,9 +744,10 @@ class StatsFormatter:
                         indent = 1
 
                     output.append(f"{Colors.DIM}{label}{' ' * indent}{Colors.CYAN}{sparkline}{Colors.RESET}")
-                    # Align the time labels under the sparkline as well
+                    # Align the time labels so the first character is DIRECTLY under the first sparkline block
+                    spark_start = len(label) + indent
                     time_scale = "12a    6a    12p    6p    12a"
-                    output.append(f"{Colors.DIM}{' ' * indent}{time_scale}{Colors.RESET}")
+                    output.append(f"{Colors.DIM}{' ' * spark_start}{time_scale}{Colors.RESET}")
                     output.append("")
                 
                 # Sort by date and take last 7 days (if available)
