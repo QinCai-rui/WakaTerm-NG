@@ -9,8 +9,9 @@ import sys
 import subprocess
 import platform
 import shutil
+import tarfile
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 class WakatermBuilder:
     """Builder class for creating cross-platform WakaTerm binaries"""
@@ -111,14 +112,14 @@ class WakatermBuilder:
                 print(f"🔧 Build type: {label} (from WAKATERM_BUILD_TYPE={env_choice})")
                 return
             else:
-                print(f"⚠️  Ignoring invalid WAKATERM_BUILD_TYPE value: {env_choice}")
+                print(f"⚠️ Ignoring invalid WAKATERM_BUILD_TYPE value: {env_choice}")
 
         if not sys.stdin.isatty() or os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS'):
             self.build_type = 'cython'
             print("🤖 Non-interactive environment detected; defaulting to Cython build")
             return
 
-        print("\n🏗️  Choose build type:")
+        print("\n🏗️ Choose build type:")
         print("  1) Cython compiled binaries (recommended - faster performance)")
         print("  2) Python source package (easier development, no compilation)")
         print()
@@ -294,6 +295,60 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wakaterm-dis
             binaries_built.append(wakatermctl_bin)
         
         return binaries_built[0] if binaries_built else None
+    
+    def create_release_archive(self, binary_path: Path) -> Optional[Path]:
+        """Create a tar.gz archive containing the binary and its dependencies"""
+        if not binary_path or not binary_path.exists():
+            print("❌ Binary path not found, cannot create archive")
+            return None
+        
+        # Determine archive name
+        binary_name = binary_path.name
+        archive_name = f"{binary_name}.tar.gz"
+        archive_path = self.binary_dir / archive_name
+        
+        print(f"📦 Creating release archive: {archive_name}")
+        
+        # Create temporary directory for archive contents
+        temp_dir = self.binary_dir / f"temp_{binary_name}"
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+        temp_dir.mkdir()
+        
+        try:
+            # Copy binary to temp directory (rename to just 'wakaterm')
+            shutil.copy2(binary_path, temp_dir / "wakaterm")
+            os.chmod(temp_dir / "wakaterm", 0o755)
+            
+            # Copy wakaterm-dist directory to temp directory
+            dist_dir = self.binary_dir / "wakaterm-dist"
+            if dist_dir.exists():
+                shutil.copytree(dist_dir, temp_dir / "wakaterm-dist")
+            else:
+                print(f"⚠️  Warning: wakaterm-dist directory not found at {dist_dir}")
+                return None
+            
+            # Create tar.gz archive
+            with tarfile.open(archive_path, "w:gz") as tar:
+                # Add files with proper directory structure
+                for item in temp_dir.iterdir():
+                    tar.add(item, arcname=item.name)
+            
+            # Clean up temp directory
+            shutil.rmtree(temp_dir)
+            
+            # Show archive info
+            archive_size = archive_path.stat().st_size / 1024 / 1024
+            print(f"✅ Release archive created: {archive_path}")
+            print(f"📊 Archive size: {archive_size:.1f} MB")
+            
+            return archive_path
+            
+        except Exception as e:
+            print(f"❌ Failed to create archive: {e}")
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
+            return None
     
     def build_python_package(self) -> Optional[Path]:
         """Create Python source package without Cython compilation"""
@@ -565,6 +620,7 @@ def main():
     parser.add_argument('--test', action='store_true', help='Test the binary after building')
     parser.add_argument('--clean', action='store_true', help='Clean build artifacts before building')
     parser.add_argument('--installer', action='store_true', help='Create universal installer script')
+    parser.add_argument('--archive', action='store_true', help='Create tar.gz release archive')
     parser.add_argument('--python', action='store_true', help='Build Python source package instead of Cython binary')
     parser.add_argument('--cython', action='store_true', help='Build Cython compiled binary (default)')
     
@@ -603,6 +659,13 @@ def main():
         print("❌ Build failed")
         return 1
     
+    # Create release archive for Cython builds (default) or if explicitly requested
+    archive_path = None
+    if builder.build_type == 'cython' or args.archive:
+        archive_path = builder.create_release_archive(binary_path)
+        if not archive_path:
+            print("⚠️  Warning: Failed to create release archive")
+    
     # Test binary if requested
     if args.test:
         if not builder.test_binary(binary_path):
@@ -617,12 +680,17 @@ def main():
     print("🎉 Build completed successfully!")
     print(f"📁 Build location: {binary_path}")
     
+    if archive_path:
+        print(f"📦 Release archive: {archive_path}")
+    
     if builder.build_type == 'python':
         print("🐍 Python source package created")
         print(f"🔧 To install Python version: python -m pip install -e .")
     else:
         print("🚀 Cython compiled binary created")
         print(f"🔧 To install binary: cp {binary_path} ~/.local/bin/wakaterm")
+        if archive_path:
+            print(f"🔧 Or extract archive: tar -xzf {archive_path.name} && cp wakaterm ~/.local/bin/")
     
     return 0
 
