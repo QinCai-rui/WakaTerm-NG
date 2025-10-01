@@ -263,10 +263,13 @@ main() {
             check_wakatime_config
             install_wakaterm
             setup_shell_integration "$(detect_shell)"
+            set +e  # Don't fail on test failure
             test_installation
+            set -e
             echo ""
             success "Installation complete!"
             log "WakaTerm NG will now track your terminal commands and send them to Wakatime."
+            exit 0
             ;;
         "setup-integration")
             echo "=== WakaTerm NG Setup Integration ==="

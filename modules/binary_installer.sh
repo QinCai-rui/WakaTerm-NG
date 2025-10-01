@@ -129,7 +129,7 @@ install_prebuilt_binary() {
         chmod +x "$bin_dir/wakaterm"
         track_file_creation "$bin_dir/wakaterm"
         success "wakaterm installed to $bin_dir/wakaterm"
-        ((installed_count++))
+        installed_count=$((installed_count + 1))
     fi
     
     if [[ -f "wakatermctl-$platform-$arch" ]]; then
@@ -138,7 +138,7 @@ install_prebuilt_binary() {
         chmod +x "$bin_dir/wakatermctl"
         track_file_creation "$bin_dir/wakatermctl"
         success "wakatermctl installed to $bin_dir/wakatermctl"
-        ((installed_count++))
+        installed_count=$((installed_count + 1))
     fi
     
     # Check for compiled modules directory
@@ -177,8 +177,31 @@ install_prebuilt_binary() {
         warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
     fi
     
+    # Create symlink for shell integration compatibility
+    log "Creating symlink for shell integration compatibility..."
+    local share_dir="$HOME/.local/share/wakaterm"
+    mkdir -p "$share_dir"
+    
+    # Create symlink from expected Python path to binary
+    if [[ -L "$share_dir/wakaterm.py" || -e "$share_dir/wakaterm.py" ]]; then
+        log "Removing existing wakaterm.py..."
+        rm -f "$share_dir/wakaterm.py"
+    fi
+    
+    ln -s "$bin_dir/wakaterm" "$share_dir/wakaterm.py"
+    success "Created symlink: $share_dir/wakaterm.py -> $bin_dir/wakaterm"
+    
     # Install shell integration files
+    log "Calling install_shell_files..."
+    set +e  # Temporarily disable exit on error
     install_shell_files
+    local shell_result=$?
+    set -e  # Re-enable exit on error
+    if [[ $shell_result -eq 0 ]]; then
+        success "Shell integration installed successfully"
+    else
+        warn "Shell integration installation failed (exit code: $shell_result), but continuing..."
+    fi
     
     # Track installation type
     track_state "install_type" "prebuilt_binary"
@@ -195,45 +218,74 @@ install_shell_files() {
     local install_dir="${INSTALL_DIR:-$HOME/.local/share/wakaterm}"
     local raw_base="${RAW_BASE:-https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/refs/heads/main}"
     
+    log "Using install_dir: $install_dir"
+    log "Using raw_base: $raw_base"
+    
     # Create shells directory
     local shells_dir="$install_dir/shells"
-    mkdir -p "$shells_dir" || {
+    log "Creating shells directory: $shells_dir"
+    
+    if ! mkdir -p "$shells_dir"; then
         error "Failed to create shells directory: $shells_dir"
         return 1
-    }
-    track_state "directories_created" "$shells_dir"
+    fi
+    
+    if [[ -d "$shells_dir" ]]; then
+        log "Successfully created shells directory"
+        track_state "directories_created" "$shells_dir"
+    else
+        error "Shells directory does not exist after creation attempt"
+        return 1
+    fi
     
     # Define shell files to download
     local shell_files=("bash_wakaterm.sh" "zsh_wakaterm.zsh" "fish_wakaterm.fish")
     local base_url="$raw_base/shells"
     
     # Download each shell file
+    local failed_downloads=0
     for shell_file in "${shell_files[@]}"; do
         local url="$base_url/$shell_file"
         local target="$shells_dir/$shell_file"
         
-        log "Downloading $shell_file..."
+        log "Downloading $shell_file from $url to $target..."
         
         local downloaded=false
+        local error_output
+        
         if command -v curl >/dev/null 2>&1; then
-            if curl -fsSL -o "$target" "$url" 2>/dev/null; then
+            error_output=$(curl -fsSL -o "$target" "$url" 2>&1)
+            if [[ $? -eq 0 && -f "$target" ]]; then
                 downloaded=true
+            else
+                log "curl failed with output: $error_output"
             fi
         elif command -v wget >/dev/null 2>&1; then
-            if wget -q -O "$target" "$url" 2>/dev/null; then
+            error_output=$(wget -q -O "$target" "$url" 2>&1)
+            if [[ $? -eq 0 && -f "$target" ]]; then
                 downloaded=true
+            else
+                log "wget failed with output: $error_output"
             fi
+        else
+            error "Neither curl nor wget available for downloading shell files"
+            return 1
         fi
         
         if [[ "$downloaded" == "true" ]]; then
             chmod +x "$target"
             track_file_creation "$target"
-            log "Installed $shell_file to $target"
+            success "Installed $shell_file to $target"
         else
             error "Failed to download $shell_file from $url"
-            return 1
+            failed_downloads=$((failed_downloads + 1))
         fi
     done
+    
+    if [[ $failed_downloads -gt 0 ]]; then
+        error "$failed_downloads shell files failed to download"
+        return 1
+    fi
     
     success "Shell integration files installed successfully"
 }
