@@ -40,10 +40,15 @@ class ProgressIndicator:
         
         if total > 0:
             percentage = int((current / total) * 100)
-            bar_length = 20
-            filled = int((current / total) * bar_length)
+            bar_length = 25
+            # Round filled blocks so progress reflects fractional completion
+            filled = int(round((current / total) * bar_length))
+            if filled < 0:
+                filled = 0
+            if filled > bar_length:
+                filled = bar_length
             bar = "█" * filled + "░" * (bar_length - filled)
-            
+
             print(f"\r{self.description}: [{bar}] {percentage}% ({current}/{total})", end="", flush=True)
     
     def finish(self, message: str = "Complete"):
@@ -436,11 +441,35 @@ class StatsFormatter:
             return f"{hours}h"
     
     @staticmethod
-    def format_percentage_bar(percentage: float, width: int = 20) -> str:
-        """Create a visual percentage bar"""
-        filled = int(percentage / 100 * width)
+    def format_percentage_bar(percentage: float, width: int = 25, color: Optional[str] = None) -> str:
+        """Create a visual percentage bar.
+
+        round the filled block count so that fractional percentages are
+        represented more intuitively on fixed-width bars. For example, with a
+        20-character bar 23.5% -> 5 blocks (25%) rather than truncating to 4 blocks
+        (20%). An optional ANSI color code may be provided to color the bar.
+        """
+        # Clamp percentage to sensible bounds
+        try:
+            pct = float(percentage)
+        except Exception:
+            pct = 0.0
+
+        if pct < 0:
+            pct = 0.0
+        if pct > 100:
+            pct = 100.0
+
+        # Use rounding so small fractions are represented visually
+        filled = int(round(pct / 100 * width))
+        if filled < 0:
+            filled = 0
+        if filled > width:
+            filled = width
+
         bar = "█" * filled + "░" * (width - filled)
-        return f"{Colors.CYAN}{bar}{Colors.RESET}"
+        bar_color = color if color is not None else Colors.CYAN
+        return f"{bar_color}{bar}{Colors.RESET}"
     
     @staticmethod
     def format_hour_display(hour: int) -> str:
@@ -523,7 +552,7 @@ class StatsFormatter:
             output.append(f"{Colors.DIM}┌─ {summary} {'─' * (max(0, 55 - len(summary)))}─┐{Colors.RESET}")
         
         # Overview Section with better organization
-        output.append(f"{Colors.BOLD}{Colors.YELLOW}📊 OVERVIEW{Colors.RESET}")
+        output.append(f"{Colors.BOLD}{Colors.YELLOW} OVERVIEW{Colors.RESET}")
         output.append(f"{Colors.DIM}{'─' * 20}{Colors.RESET}")
         
         overview_items = []
@@ -566,7 +595,7 @@ class StatsFormatter:
         
         # Productivity Insights Section with better layout
         if 'productivity_score' in data:
-            output.append(f"{Colors.BOLD}{Colors.YELLOW}🚀 PRODUCTIVITY INSIGHTS{Colors.RESET}")
+            output.append(f"\n{Colors.BOLD}{Colors.YELLOW} PRODUCTIVITY INSIGHTS{Colors.RESET}")
             output.append(f"{Colors.DIM}{'─' * 25}{Colors.RESET}")
             
             # Productivity Score with visual indicator
@@ -574,7 +603,7 @@ class StatsFormatter:
             emoji = StatsFormatter.get_productivity_emoji(score) if use_colors else ""
             score_color = Colors.BRIGHT_GREEN if score >= 70 else Colors.YELLOW if score >= 40 else Colors.RED
             
-            score_bar = StatsFormatter.format_percentage_bar(score, 15)
+            score_bar = StatsFormatter.format_percentage_bar(score, 25)
             output.append(f"{Colors.GREEN}Score:{Colors.RESET} {score_color}{emoji} {score:.1f}/100{Colors.RESET} {score_bar}")
             
             # Command Efficiency
@@ -605,14 +634,14 @@ class StatsFormatter:
         
         # Languages/Categories Section with improved layout
         if 'languages' in data and data['languages']:
-            output.append(f"{Colors.BOLD}{Colors.YELLOW}💻 LANGUAGES & TECHNOLOGIES{Colors.RESET}")
+            output.append(f"{Colors.BOLD}{Colors.YELLOW} LANGUAGES & TECHNOLOGIES{Colors.RESET}")
             output.append(f"{Colors.DIM}{'─' * 28}{Colors.RESET}")
             
             for i, lang in enumerate(data['languages'][:10], 1):
                 name = lang.get('name', 'Unknown')
                 percent = lang.get('percent', 0)
                 time_str = StatsFormatter.format_time(lang.get('total_seconds', 0))
-                bar = StatsFormatter.format_percentage_bar(percent, 12)
+                bar = StatsFormatter.format_percentage_bar(percent, 25)
                 
                 # Color coding based on rank
                 if i == 1:
@@ -631,18 +660,18 @@ class StatsFormatter:
                 # Ensure consistent width for language names
                 display_name = name[:16] + "..." if len(name) > 19 else name
                     
-                output.append(f"{color}{rank_icon}. {display_name:<19}{Colors.RESET} {bar} {Colors.BOLD}{time_str:>8}{Colors.RESET} {Colors.DIM}({percent:5.1f}%){Colors.RESET}")
+                output.append(f" {color}{rank_icon} {display_name:<19}{Colors.RESET} {bar} {Colors.BOLD}{time_str:>8}{Colors.RESET} {Colors.DIM}({percent:5.1f}%){Colors.RESET}")
         
         # Commands Section with better formatting
         if 'commands' in data and data['commands']:
-            output.append(f"\n{Colors.BOLD}{Colors.YELLOW}⌨️  TOP COMMANDS{Colors.RESET}")
+            output.append(f"\n{Colors.BOLD}{Colors.YELLOW} TOP COMMANDS{Colors.RESET}")
             output.append(f"{Colors.DIM}{'─' * 15}{Colors.RESET}")
             
             for i, cmd in enumerate(data['commands'][:10], 1):
                 name = cmd.get('name', 'unknown')
                 count = cmd.get('count', 0)
                 percent = cmd.get('percent', 0)
-                bar = StatsFormatter.format_percentage_bar(percent, 12)
+                bar = StatsFormatter.format_percentage_bar(percent, 25)
                 
                 if i <= 3:
                     color = Colors.BRIGHT_GREEN if i == 1 else Colors.BRIGHT_BLUE if i == 2 else Colors.YELLOW
@@ -666,7 +695,7 @@ class StatsFormatter:
                     
                 percent = project.get('percent', 0)
                 time_str = StatsFormatter.format_time(project.get('total_seconds', 0))
-                bar = StatsFormatter.format_percentage_bar(percent, 12)
+                bar = StatsFormatter.format_percentage_bar(percent, 25)
                 
                 if i <= 3:
                     color = Colors.BRIGHT_GREEN if i == 1 else Colors.BRIGHT_BLUE if i == 2 else Colors.YELLOW
@@ -708,10 +737,8 @@ class StatsFormatter:
                         
                         time_str = StatsFormatter.format_time(seconds)
                         percent_of_max = (seconds / max_seconds) * 100
-                        bar_length = int(percent_of_max / 100 * 15)
-                        bar = "█" * bar_length + "░" * (15 - bar_length)
-                        
-                        # Smart color coding based on activity level
+
+                        # Smart color coding based on activity level (keep for indicators)
                         if seconds == max_seconds:
                             bar_color = Colors.BRIGHT_GREEN
                             day_indicator = "🔥" if use_colors else "*"
@@ -727,12 +754,15 @@ class StatsFormatter:
                         else:
                             bar_color = Colors.DIM
                             day_indicator = "  " if use_colors else " "
-                            
+
+                        # Use the central helper to generate a bar that rounds properly
+                        bar = StatsFormatter.format_percentage_bar(percent_of_max, 25, color=bar_color)
+
                         # Add productivity indicator for the day
                         daily_productivity = min(100, (seconds / 36) * 10) if seconds > 0 else 0
                         productivity_display = f"{daily_productivity:3.0f}%" if seconds > 0 else "  0%"
-                        
-                        output.append(f"{day_indicator} {Colors.BOLD}{day_name} {date_display}{Colors.RESET}  {bar_color}{bar}{Colors.RESET} {Colors.BOLD}{time_str:>8}{Colors.RESET} {Colors.DIM}({productivity_display}){Colors.RESET}")
+
+                        output.append(f"{day_indicator} {Colors.BOLD}{day_name} {date_display}{Colors.RESET}  {bar} {Colors.BOLD}{time_str:>8}{Colors.RESET} {Colors.DIM}({productivity_display}){Colors.RESET}")
                     except:
                         continue
         
