@@ -7,7 +7,16 @@ WAKATERM_DIR="$HOME/.local/share/wakaterm"
 WAKATERM_PYTHON="${WAKATERM_DIR}/wakaterm.py"
 
 # Check if wakaterm.py exists (could be a Python file or a symlink to binary)
-if [[ ! -e "$WAKATERM_PYTHON" ]]; then
+# First check if it's a symlink (even if broken), then check if target exists
+if [[ -L "$WAKATERM_PYTHON" ]]; then
+    # It's a symlink, check if target exists
+    if [[ ! -e "$WAKATERM_PYTHON" ]]; then
+        echo "Warning: wakaterm.py is a broken symlink at $WAKATERM_PYTHON" >&2
+        echo "Target does not exist: $(readlink "$WAKATERM_PYTHON")" >&2
+        return 1
+    fi
+elif [[ ! -e "$WAKATERM_PYTHON" ]]; then
+    # Not a symlink and doesn't exist
     echo "Warning: wakaterm.py not found at $WAKATERM_PYTHON" >&2
     return 1
 fi

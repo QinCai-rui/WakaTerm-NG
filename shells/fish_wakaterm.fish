@@ -6,7 +6,16 @@ set -g wakaterm_dir "$HOME/.local/share/wakaterm"
 set -g wakaterm_python "$wakaterm_dir/wakaterm.py"
 
 # Check if wakaterm.py exists (could be a Python file or a symlink to binary)
-if not test -e "$wakaterm_python"
+# First check if it's a symlink (even if broken), then check if target exists
+if test -L "$wakaterm_python"
+    # It's a symlink, check if target exists
+    if not test -e "$wakaterm_python"
+        echo "Warning: wakaterm.py is a broken symlink at $wakaterm_python" >&2
+        echo "Target does not exist: "(readlink "$wakaterm_python") >&2
+        exit 1
+    end
+else if not test -e "$wakaterm_python"
+    # Not a symlink and doesn't exist
     echo "Warning: wakaterm.py not found at $wakaterm_python" >&2
     exit 1
 end
