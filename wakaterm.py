@@ -142,14 +142,16 @@ class TerminalTracker:
             if current_time - cache_time < _command_cache_max_age:
                 return cached_result
         
-        cmd_parts = command.strip().split()
-        if not cmd_parts:
+        # Use the cleaned base command to avoid mis-detecting env assignments as commands
+        cleaned_base = self.get_base_command(command)
+        cleaned_base = cleaned_base.strip()
+        if not cleaned_base or cleaned_base == 'unknown':
             result = 'Shell'
             _command_cache[cache_key] = (result, current_time)
             return result
-        
-        cmd = cmd_parts[0]
-        
+
+        cmd = cleaned_base.split()[0]
+
         # Expanded language mappings
         language_map = {
             # Python
@@ -314,30 +316,44 @@ class TerminalTracker:
         # Remove common prefixes like 'time', 'nohup', 'nice', etc.
         prefixes_to_skip = ['time', 'nohup', 'nice', 'ionice', 'timeout', 'strace', 'ltrace']
         
-        # Split by pipes and take the first command
+        # Reduce compound/complex command lines to the first simple command
+        # Handle pipes, &&, and ; by taking the first segment
         first_part = cmd.split('|')[0].strip()
-        
-        # Split by && and take the first command  
         first_part = first_part.split('&&')[0].strip()
-        
-        # Split by ; and take the first command
         first_part = first_part.split(';')[0].strip()
-        
+
+        # Remove leading environment variable assignments like FOO=bar BAZ=qux
+        # They can be chained and may appear before the actual command.
+        parts = first_part.split()
+        k = 0
+        while k < len(parts) and '=' in parts[k] and not parts[k].startswith(('=', '/')):
+            # Basic heuristic: token contains '=' and isn't a path or assignment-only
+            # e.g., FOO=bar or PATH=/usr/bin
+            k += 1
+
+        # If the whole first_part was env assignments, no command remains
+        if k >= len(parts):
+            return 'unknown'
+
+        # Reconstruct the command starting from the first non-assignment token
+        first_part = ' '.join(parts[k:])
+
         cmd_parts = first_part.split()
         if not cmd_parts:
             return 'unknown'
-            
-        # Skip things to get to the actual command
-        i = 0
-        while i < len(cmd_parts) and cmd_parts[i] in prefixes_to_skip:
-            i += 1
-            
-        if i < len(cmd_parts):
-            base_cmd = cmd_parts[i]
-            # Remove path components to get just the command name
-            return os.path.basename(base_cmd)
-        
-        return cmd_parts[0]
+
+        # Skip known prefixes to get to the actual command
+        j = 0
+        while j < len(cmd_parts) and cmd_parts[j] in prefixes_to_skip:
+            j += 1
+
+        if j < len(cmd_parts):
+            base_cmd = cmd_parts[j]
+        else:
+            base_cmd = cmd_parts[0]
+
+        # Remove any path components to get just the command name
+        return os.path.basename(base_cmd)
     
     def create_activity_entry(self, command: str, cwd: str, timestamp: float, duration: float = 2.0) -> Dict:
         """Create an activity log entry"""
