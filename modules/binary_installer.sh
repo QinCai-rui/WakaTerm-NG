@@ -129,7 +129,7 @@ install_prebuilt_binary() {
         chmod +x "$bin_dir/wakaterm"
         track_file_creation "$bin_dir/wakaterm"
         success "wakaterm installed to $bin_dir/wakaterm"
-        ((installed_count++))
+        installed_count=$((installed_count + 1))
     fi
     
     if [[ -f "wakatermctl-$platform-$arch" ]]; then
@@ -138,7 +138,7 @@ install_prebuilt_binary() {
         chmod +x "$bin_dir/wakatermctl"
         track_file_creation "$bin_dir/wakatermctl"
         success "wakatermctl installed to $bin_dir/wakatermctl"
-        ((installed_count++))
+        installed_count=$((installed_count + 1))
     fi
     
     # Check for compiled modules directory
@@ -177,44 +177,19 @@ install_prebuilt_binary() {
         warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
     fi
     
-    # Create Python wrapper for shell integration compatibility
-    log "Creating Python wrapper for shell integration compatibility..."
+    # Create symlink for shell integration compatibility
+    log "Creating symlink for shell integration compatibility..."
     local share_dir="$HOME/.local/share/wakaterm"
     mkdir -p "$share_dir"
     
-    # Create Python wrapper that calls the binary
-    local py_wrapper="$share_dir/wakaterm.py"
-    if [[ -f "$py_wrapper" ]]; then
+    # Create symlink from expected Python path to binary
+    if [[ -L "$share_dir/wakaterm.py" || -e "$share_dir/wakaterm.py" ]]; then
         log "Removing existing wakaterm.py..."
-        rm -f "$py_wrapper"
+        rm -f "$share_dir/wakaterm.py"
     fi
     
-    cat > "$py_wrapper" << 'EOF'
-#!/usr/bin/env python3
-import os
-import sys
-import subprocess
-
-def main():
-    bin_path = os.path.expanduser("~/.local/bin/wakaterm")
-    if not os.path.isfile(bin_path):
-        print(f"Error: wakaterm binary not found at {bin_path}", file=sys.stderr)
-        sys.exit(1)
-    
-    args = sys.argv[1:]
-    try:
-        result = subprocess.run([bin_path] + args, check=False)
-        sys.exit(result.returncode)
-    except Exception as e:
-        print(f"Error running wakaterm binary: {e}", file=sys.stderr)
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()
-EOF
-    
-    chmod +x "$py_wrapper"
-    success "Created Python wrapper: $py_wrapper"
+    ln -s "$bin_dir/wakaterm" "$share_dir/wakaterm.py"
+    success "Created symlink: $share_dir/wakaterm.py -> $bin_dir/wakaterm"
     
     # Install shell integration files
     log "Calling install_shell_files..."
@@ -233,7 +208,6 @@ EOF
     track_state "platform" "$platform-$arch"
     
     success "Pre-built binary installation complete!"
-    return 0
 }
 
 # Download and install shell integration files
@@ -304,7 +278,7 @@ install_shell_files() {
             success "Installed $shell_file to $target"
         else
             error "Failed to download $shell_file from $url"
-            ((failed_downloads++))
+            failed_downloads=$((failed_downloads + 1))
         fi
     done
     
@@ -314,5 +288,4 @@ install_shell_files() {
     fi
     
     success "Shell integration files installed successfully"
-    return 0
 }
