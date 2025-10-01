@@ -191,16 +191,21 @@ install_prebuilt_binary() {
 install_shell_files() {
     log "Installing shell integration files..."
     
+    # Ensure required variables are defined
+    local install_dir="${INSTALL_DIR:-$HOME/.local/share/wakaterm}"
+    local raw_base="${RAW_BASE:-https://raw.githubusercontent.com/QinCai-rui/WakaTerm-NG/refs/heads/main}"
+    
     # Create shells directory
-    local shells_dir="$INSTALL_DIR/shells"
+    local shells_dir="$install_dir/shells"
     mkdir -p "$shells_dir" || {
         error "Failed to create shells directory: $shells_dir"
         return 1
     }
+    track_state "directories_created" "$shells_dir"
     
     # Define shell files to download
     local shell_files=("bash_wakaterm.sh" "zsh_wakaterm.zsh" "fish_wakaterm.fish")
-    local base_url="$RAW_BASE/shells"
+    local base_url="$raw_base/shells"
     
     # Download each shell file
     for shell_file in "${shell_files[@]}"; do
