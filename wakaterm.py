@@ -93,9 +93,6 @@ class TerminalTracker:
                 if DEBUG_MODE:
                     print(f"Error: Could not create any log directory. Original error: {e}, Fallback error: {fallback_e}", file=sys.stderr)
                 raise RuntimeError(f"Unable to create log directory. Please check permissions for {log_dir or '~/.local/share/wakaterm-logs'} or {fallback_dir}")
-                # Write a warning to stderr ONLY if in debug mode
-                if DEBUG_MODE:
-                    print(f"Warning: Could not create {log_dir or '~/.local/share/wakaterm-logs'}, using {fallback_dir}", file=sys.stderr)
             except Exception:
                 # If even temp directory fails, can't log anything
                 if DEBUG_MODE:
