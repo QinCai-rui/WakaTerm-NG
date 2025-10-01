@@ -177,6 +177,20 @@ install_prebuilt_binary() {
         warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
     fi
     
+    # Create symlink for shell integration compatibility
+    log "Creating symlink for shell integration compatibility..."
+    local share_dir="$HOME/.local/share/wakaterm"
+    mkdir -p "$share_dir"
+    
+    # Create symlink from expected Python path to binary
+    if [[ -L "$share_dir/wakaterm.py" || -e "$share_dir/wakaterm.py" ]]; then
+        log "Removing existing wakaterm.py..."
+        rm -f "$share_dir/wakaterm.py"
+    fi
+    
+    ln -s "$bin_dir/wakaterm" "$share_dir/wakaterm.py"
+    success "Created symlink: $share_dir/wakaterm.py -> $bin_dir/wakaterm"
+    
     # Install shell integration files
     log "Calling install_shell_files..."
     set +e  # Temporarily disable exit on error
