@@ -12,7 +12,7 @@ if [[ ! -f "$WAKATERM_PYTHON" ]]; then
     return 1
 fi
 
-# Function to send command to wakatime (optimized for performance)
+# Function to send command to wakatime (using Python script)
 wakaterm_track() {
     local command="$1"
     local duration="$2"
