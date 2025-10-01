@@ -730,9 +730,23 @@ class StatsFormatter:
                     hourly_data = data['hourly_breakdown']
                     # Create 24-hour array
                     hourly_values = [hourly_data.get(h, 0) for h in range(24)]
-                    sparkline = StatsFormatter.create_sparkline(hourly_values, 24)
-                    output.append(f"{Colors.DIM}24h Pattern: {Colors.CYAN}{sparkline}{Colors.RESET}")
-                    output.append(f"{Colors.DIM}             12a    6a    12p    6p    12a{Colors.RESET}")
+                    # Use the same width as percentage bars so the sparkline lines up
+                    spark_width = DEFAULT_BAR_WIDTH
+                    sparkline = StatsFormatter.create_sparkline(hourly_values, spark_width)
+
+                    # Compute indentation so the sparkline starts under the bar column
+                    # Command lines use: "{i:2d}. {display_name:<19} {bar} ..."
+                    # That is: index (4 chars) + name (19 chars) + single space = 24 chars before the bar.
+                    pre_bar_width = 4 + 19 + 1
+                    label = "24h Pattern: "
+                    indent = pre_bar_width - len(label)
+                    if indent < 1:
+                        indent = 1
+
+                    output.append(f"{Colors.DIM}{label}{' ' * indent}{Colors.CYAN}{sparkline}{Colors.RESET}")
+                    # Align the time labels under the sparkline as well
+                    time_scale = "12a    6a    12p    6p    12a"
+                    output.append(f"{Colors.DIM}{' ' * indent}{time_scale}{Colors.RESET}")
                     output.append("")
                 
                 # Sort by date and take last 7 days (if available)
