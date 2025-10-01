@@ -177,9 +177,58 @@ install_prebuilt_binary() {
         warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
     fi
     
+    # Install shell integration files
+    install_shell_files
+    
     # Track installation type
     track_state "install_type" "prebuilt_binary"
     track_state "platform" "$platform-$arch"
     
     success "Pre-built binary installation complete!"
+}
+
+# Download and install shell integration files
+install_shell_files() {
+    log "Installing shell integration files..."
+    
+    # Create shells directory
+    local shells_dir="$INSTALL_DIR/shells"
+    mkdir -p "$shells_dir" || {
+        error "Failed to create shells directory: $shells_dir"
+        return 1
+    }
+    
+    # Define shell files to download
+    local shell_files=("bash_wakaterm.sh" "zsh_wakaterm.zsh" "fish_wakaterm.fish")
+    local base_url="$RAW_BASE/shells"
+    
+    # Download each shell file
+    for shell_file in "${shell_files[@]}"; do
+        local url="$base_url/$shell_file"
+        local target="$shells_dir/$shell_file"
+        
+        log "Downloading $shell_file..."
+        
+        local downloaded=false
+        if command -v curl >/dev/null 2>&1; then
+            if curl -fsSL -o "$target" "$url" 2>/dev/null; then
+                downloaded=true
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if wget -q -O "$target" "$url" 2>/dev/null; then
+                downloaded=true
+            fi
+        fi
+        
+        if [[ "$downloaded" == "true" ]]; then
+            chmod +x "$target"
+            track_file_creation "$target"
+            log "Installed $shell_file to $target"
+        else
+            error "Failed to download $shell_file from $url"
+            return 1
+        fi
+    done
+    
+    success "Shell integration files installed successfully"
 }
