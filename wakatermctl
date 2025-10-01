@@ -17,6 +17,10 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from collections import defaultdict, Counter
 
+# Default bar width (characters). Each char will represent 100 / DEFAULT_BAR_WIDTH percent.
+# Can be overridden via CLI flag --bar-width
+DEFAULT_BAR_WIDTH = 25
+
 
 class ProgressIndicator:
     """Simple progress indicator for long-running operations"""
@@ -40,7 +44,7 @@ class ProgressIndicator:
         
         if total > 0:
             percentage = int((current / total) * 100)
-            bar_length = 25
+            bar_length = DEFAULT_BAR_WIDTH
             # Round filled blocks so progress reflects fractional completion
             filled = int(round((current / total) * bar_length))
             if filled < 0:
@@ -441,7 +445,7 @@ class StatsFormatter:
             return f"{hours}h"
     
     @staticmethod
-    def format_percentage_bar(percentage: float, width: int = 25, color: Optional[str] = None) -> str:
+    def format_percentage_bar(percentage: float, width: Optional[int] = None, color: Optional[str] = None) -> str:
         """Create a visual percentage bar.
 
         round the filled block count so that fractional percentages are
@@ -449,6 +453,10 @@ class StatsFormatter:
         20-character bar 23.5% -> 5 blocks (25%) rather than truncating to 4 blocks
         (20%). An optional ANSI color code may be provided to color the bar.
         """
+        # Use configured default width when not provided
+        if width is None:
+            width = DEFAULT_BAR_WIDTH
+
         # Clamp percentage to sensible bounds
         try:
             pct = float(percentage)
@@ -603,7 +611,7 @@ class StatsFormatter:
             emoji = StatsFormatter.get_productivity_emoji(score) if use_colors else ""
             score_color = Colors.BRIGHT_GREEN if score >= 70 else Colors.YELLOW if score >= 40 else Colors.RED
             
-            score_bar = StatsFormatter.format_percentage_bar(score, 25)
+            score_bar = StatsFormatter.format_percentage_bar(score)
             output.append(f"{Colors.GREEN}Score:{Colors.RESET} {score_color}{emoji} {score:.1f}/100{Colors.RESET} {score_bar}")
             
             # Command Efficiency
@@ -641,7 +649,7 @@ class StatsFormatter:
                 name = lang.get('name', 'Unknown')
                 percent = lang.get('percent', 0)
                 time_str = StatsFormatter.format_time(lang.get('total_seconds', 0))
-                bar = StatsFormatter.format_percentage_bar(percent, 25)
+                bar = StatsFormatter.format_percentage_bar(percent)
                 
                 # Color coding based on rank
                 if i == 1:
@@ -671,7 +679,7 @@ class StatsFormatter:
                 name = cmd.get('name', 'unknown')
                 count = cmd.get('count', 0)
                 percent = cmd.get('percent', 0)
-                bar = StatsFormatter.format_percentage_bar(percent, 25)
+                bar = StatsFormatter.format_percentage_bar(percent)
                 
                 if i <= 3:
                     color = Colors.BRIGHT_GREEN if i == 1 else Colors.BRIGHT_BLUE if i == 2 else Colors.YELLOW
@@ -695,7 +703,7 @@ class StatsFormatter:
                     
                 percent = project.get('percent', 0)
                 time_str = StatsFormatter.format_time(project.get('total_seconds', 0))
-                bar = StatsFormatter.format_percentage_bar(percent, 25)
+                bar = StatsFormatter.format_percentage_bar(percent)
                 
                 if i <= 3:
                     color = Colors.BRIGHT_GREEN if i == 1 else Colors.BRIGHT_BLUE if i == 2 else Colors.YELLOW
@@ -756,7 +764,7 @@ class StatsFormatter:
                             day_indicator = "  " if use_colors else " "
 
                         # Use the central helper to generate a bar that rounds properly
-                        bar = StatsFormatter.format_percentage_bar(percent_of_max, 25, color=bar_color)
+                        bar = StatsFormatter.format_percentage_bar(percent_of_max, color=bar_color)
 
                         # Add productivity indicator for the day
                         daily_productivity = min(100, (seconds / 36) * 10) if seconds > 0 else 0
@@ -1122,6 +1130,12 @@ Examples:
         "--log-dir",
         help="Directory containing wakaterm log files (default: ~/.local/share/wakaterm-logs)"
     )
+
+    stats_parser.add_argument(
+        "--bar-width",
+        type=int,
+        help="Width of percentage bars in characters (default: 25). Each char ~ 100/bar_width percent."
+    )
     
     stats_parser.add_argument(
         "--debug",
@@ -1240,8 +1254,20 @@ Examples:
     
 
     
-    # Disable colors if requested or if not in a terminal
+        # Disable colors if requested or if not in a terminal
     use_colors = not args.no_color and sys.stdout.isatty()
+
+    # Apply configurable bar width if provided
+    try:
+        if getattr(args, 'bar_width', None) is not None:
+            bw = int(args.bar_width)
+            if bw < 4 or bw > 200:
+                raise ValueError("bar width out of allowed range")
+            # update module-level default
+            globals()['DEFAULT_BAR_WIDTH'] = bw
+    except Exception:
+        print("Invalid --bar-width value; must be an integer between 4 and 200", file=sys.stderr)
+        sys.exit(2)
     
     try:
         # Handle ignore pattern management
