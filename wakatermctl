@@ -717,9 +717,11 @@ class StatsFormatter:
         output.append("")  # Final spacing
         
         # Activity Timeline (last 7 days if available) with improved layout
-        if 'daily_breakdown' in data and data['daily_breakdown']:
-            daily_data = data['daily_breakdown']
-            if len(daily_data) > 1:
+        # Show timeline if we have either multiple daily entries or hourly breakdown
+        if 'daily_breakdown' in data and data['daily_breakdown'] or ('hourly_breakdown' in data and data['hourly_breakdown']):
+            daily_data = data.get('daily_breakdown', {})
+            # Proceed even if daily_data has a single day as long as hourly data exists
+            if len(daily_data) > 1 or ('hourly_breakdown' in data and data['hourly_breakdown']):
                 output.append(f"{Colors.BOLD}{Colors.YELLOW}📈 ACTIVITY TIMELINE{Colors.RESET}")
                 output.append(f"{Colors.DIM}{'─' * 20}{Colors.RESET}")
                 
@@ -733,8 +735,8 @@ class StatsFormatter:
                     output.append(f"{Colors.DIM}             12a    6a    12p    6p    12a{Colors.RESET}")
                     output.append("")
                 
-                # Sort by date and take last 7 days
-                sorted_days = sorted(daily_data.items())[-7:]
+                # Sort by date and take last 7 days (if available)
+                sorted_days = sorted(daily_data.items())[-7:] if daily_data else []
                 max_seconds = max(daily_data.values()) if daily_data.values() else 1
                 
                 for date_str, seconds in sorted_days:
