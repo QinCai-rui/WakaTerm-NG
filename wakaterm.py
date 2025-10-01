@@ -7,13 +7,43 @@ A terminal plugin that logs command usage to local files for offline tracking
 import os
 import sys
 import time
-import json
-import hashlib
-import argparse
-import subprocess
 from pathlib import Path
 from typing import Optional, List, Dict
 from datetime import datetime
+
+# Lazy imports for performance - only import when needed
+_json = None
+_hashlib = None
+_subprocess = None
+_argparse = None
+
+def _get_json():
+    global _json
+    if _json is None:
+        import json
+        _json = json
+    return _json
+
+def _get_hashlib():
+    global _hashlib
+    if _hashlib is None:
+        import hashlib
+        _hashlib = hashlib
+    return _hashlib
+
+def _get_subprocess():
+    global _subprocess
+    if _subprocess is None:
+        import subprocess
+        _subprocess = subprocess
+    return _subprocess
+
+def _get_argparse():
+    global _argparse
+    if _argparse is None:
+        import argparse
+        _argparse = argparse
+    return _argparse
 
 # Import ignore filter module
 try:
@@ -28,6 +58,14 @@ except ImportError:
 
 # init DEBUG_MODE as global variable
 DEBUG_MODE = False
+
+# Cache for project detection to avoid repeated filesystem checks
+_project_cache = {}
+_cache_max_age = 300  # 5 minutes
+
+# Cache for command categorization
+_command_cache = {}
+_command_cache_max_age = 3600  # 1 hour
 
 class TerminalTracker:
     """Main terminal tracking class that logs to local files"""
@@ -48,9 +86,13 @@ class TerminalTracker:
             try:
                 fallback_dir.mkdir(parents=True, exist_ok=True)
                 self.log_dir = fallback_dir
-                # Write a warning to stderr ONLY if in debug mode
                 if DEBUG_MODE:
-                    print(f"Warning: Could not create {log_dir or '~/.local/share/wakaterm-logs'}, using {fallback_dir}", file=sys.stderr)
+                    print(f"Warning: Could not create {log_dir or '~/.local/share/wakaterm-logs'}, using temporary directory {fallback_dir}", file=sys.stderr)
+            except Exception as fallback_e:
+                # If even temp directory fails, can't log anything
+                if DEBUG_MODE:
+                    print(f"Error: Could not create any log directory. Original error: {e}, Fallback error: {fallback_e}", file=sys.stderr)
+                raise RuntimeError(f"Unable to create log directory. Please check permissions for {log_dir or '~/.local/share/wakaterm-logs'} or {fallback_dir}")
             except Exception:
                 # If even temp directory fails, can't log anything
                 if DEBUG_MODE:
@@ -62,20 +104,49 @@ class TerminalTracker:
         self.log_file = self.log_dir / f"wakaterm-{today}.jsonl"
     
     def get_project_name(self, cwd: str) -> str:
-        """Determine project name from current directory"""
+        """Determine project name from current directory with caching"""
+        global _project_cache
+        
+        # Check cache first
+        cache_key = cwd
+        current_time = time.time()
+        
+        if cache_key in _project_cache:
+            cached_result, cache_time = _project_cache[cache_key]
+            if current_time - cache_time < _cache_max_age:
+                return cached_result
+        
         path = Path(cwd)
         # Look for common project indicators
         for parent in [path] + list(path.parents):
             if any((parent / indicator).exists() for indicator in 
                    ['.git', '.svn', '.hg', 'package.json', 'Cargo.toml', 'pyproject.toml', 'setup.py', 'pom.xml', 'Gemfile']):
-                return parent.name
-        return path.name if path.name else 'terminal'
+                result = parent.name
+                _project_cache[cache_key] = (result, current_time)
+                return result
+        
+        result = path.name if path.name else 'terminal'
+        _project_cache[cache_key] = (result, current_time)
+        return result
     
     def get_language_from_command(self, command: str) -> str:
-        """Determine language/category from command"""
+        """Determine language/category from command with caching"""
+        global _command_cache
+        
+        # Check cache first
+        cache_key = command.strip().lower()
+        current_time = time.time()
+        
+        if cache_key in _command_cache:
+            cached_result, cache_time = _command_cache[cache_key]
+            if current_time - cache_time < _command_cache_max_age:
+                return cached_result
+        
         cmd_parts = command.strip().split()
         if not cmd_parts:
-            return 'Shell'
+            result = 'Shell'
+            _command_cache[cache_key] = (result, current_time)
+            return result
         
         cmd = cmd_parts[0]
         
@@ -195,13 +266,14 @@ class TerminalTracker:
             'whatis': 'Documentation', 'apropos': 'Documentation',
         }
         
-        return language_map.get(cmd, 'Shell')
+        result = language_map.get(cmd, 'Shell')
+        _command_cache[cache_key] = (result, current_time)
+        return result
     
     def _get_git_branch(self, cwd: str) -> Optional[str]:
         """Get the current Git branch if in a Git repository"""
         try:
-            import subprocess
-            result = subprocess.run(
+            result = _get_subprocess().run(
                 ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
                 cwd=cwd,
                 capture_output=True,
@@ -274,7 +346,7 @@ class TerminalTracker:
         language = self.get_language_from_command(command)
         
         # Create a unique entity ID for this command
-        entity_hash = hashlib.md5(f"{base_cmd}:{cwd}".encode()).hexdigest()[:12]
+        entity_hash = _get_hashlib().md5(f"{base_cmd}:{cwd}".encode()).hexdigest()[:12]
         
         return {
             "timestamp": timestamp,
@@ -405,8 +477,8 @@ class TerminalTracker:
             
             # Run wakatime-cli in background
             if debug:
-                # In debug mode, capture output to see any errors
-                result = subprocess.run(
+            # In debug mode, capture output to see any errors
+                result = _get_subprocess().run(
                     wakatime_args,
                     capture_output=True,
                     text=True,
@@ -426,10 +498,10 @@ class TerminalTracker:
                         print(f"WAKATERM DEBUG: stderr: {result.stderr}", file=sys.stderr)
             else:
                 # Normal mode: run in background with no output
-                subprocess.Popen(
+                _get_subprocess().Popen(
                     wakatime_args,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=_get_subprocess().DEVNULL,
+                    stderr=_get_subprocess().DEVNULL,
                     start_new_session=True  # Detach from parent process
                 )
                 
@@ -440,22 +512,28 @@ class TerminalTracker:
     
     def track_command(self, command: str, cwd: Optional[str] = None, timestamp: Optional[float] = None, duration: Optional[float] = None, debug: bool = False):
         """Main method to track a command by logging to local file"""
-        if not command.strip():
+        if not command or not command.strip():
             if debug:
-                print(f"WAKATERM DEBUG: Skipping empty command", file=sys.stderr)
+                print("WAKATERM DEBUG: Skipping empty command", file=sys.stderr)
             return
         
-        # Check if command should be ignored
-        if self.ignore_filter.should_ignore(command):
+        # Validate inputs
+        if duration is not None and (duration < 0 or duration > 86400):  # Max 24 hours
             if debug:
-                print(f"WAKATERM DEBUG: Ignoring command '{command}' due to ignore patterns", file=sys.stderr)
-            return
+                print(f"WAKATERM DEBUG: Invalid duration {duration}, using default", file=sys.stderr)
+            duration = None
         
         cwd = cwd or os.getcwd()
         timestamp = timestamp or time.time()
         duration = duration or 2.0  # Default fallback to 2 seconds
         
         try:
+            # Check if command should be ignored
+            if self.ignore_filter.should_ignore(command):
+                if debug:
+                    print(f"WAKATERM DEBUG: Ignoring command '{command}' due to ignore patterns", file=sys.stderr)
+                return
+            
             # Create activity entry
             entry = self.create_activity_entry(command, cwd, timestamp, duration)
             
@@ -464,15 +542,22 @@ class TerminalTracker:
             
             # Append to log file (JSON Lines format)
             with open(self.log_file, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(entry) + '\n')
+                json_str = _get_json().dumps(entry, ensure_ascii=False)
+                f.write(json_str + '\n')
             
             # Also send to WakaTime
             self._send_to_wakatime(command, cwd, timestamp, duration, debug)
                 
+        except PermissionError:
+            if debug:
+                print(f"WAKATERM DEBUG: Permission denied writing to log file {self.log_file}", file=sys.stderr)
+        except OSError as e:
+            if debug:
+                print(f"WAKATERM DEBUG: OS error logging command '{command}': {e}", file=sys.stderr)
         except Exception as e:
             # If there's any error, log in debug mode or silently fail
             if debug:
-                print(f"WAKATERM DEBUG: Error logging command '{command}': {e}", file=sys.stderr)
+                print(f"WAKATERM DEBUG: Unexpected error logging command '{command}': {e}", file=sys.stderr)
             pass
     
     def cleanup_old_logs(self, days_to_keep: int = 30):
@@ -488,35 +573,48 @@ class TerminalTracker:
 
 def main():
     """Main entry point"""
-    parser = argparse.ArgumentParser(description='WakaTerm NG - Terminal Activity Logger')
-    parser.add_argument('command', nargs='*', help='Command to track')
-    parser.add_argument('--cwd', help='Current working directory')
-    parser.add_argument('--timestamp', type=float, help='Command timestamp')
-    parser.add_argument('--duration', type=float, help='Command execution duration in seconds')
-    parser.add_argument('--log-dir', help='Directory to store log files')
-    parser.add_argument('--cleanup', action='store_true', help='Cleanup old log files')
-    parser.add_argument('--days-to-keep', type=int, default=30, help='Days of logs to keep (default: 30)')
-    parser.add_argument('--debug', action='store_true', help='Enable debug output')
-    
-    args = parser.parse_args()
-    
-    # Check for debug mode from environment variable as well
-    global DEBUG_MODE
-    DEBUG_MODE = args.debug or os.environ.get("WAKATERM_DEBUG", "").lower() in ("1", "true", "yes", "on")
-    
-    tracker = TerminalTracker(args.log_dir)
-    
-    # Handle cleanup if requested
-    if args.cleanup:
-        tracker.cleanup_old_logs(args.days_to_keep)
-        return
-    
-    if not args.command:
-        print("Usage: wakaterm.py <command>", file=sys.stderr)
+    try:
+        parser = _get_argparse().ArgumentParser(description='WakaTerm NG - Terminal Activity Logger')
+        parser.add_argument('command', nargs='*', help='Command to track')
+        parser.add_argument('--cwd', help='Current working directory')
+        parser.add_argument('--timestamp', type=float, help='Command timestamp')
+        parser.add_argument('--duration', type=float, help='Command execution duration in seconds')
+        parser.add_argument('--log-dir', help='Directory to store log files')
+        parser.add_argument('--cleanup', action='store_true', help='Cleanup old log files')
+        parser.add_argument('--days-to-keep', type=int, default=30, help='Days of logs to keep (default: 30)')
+        parser.add_argument('--debug', action='store_true', help='Enable debug output')
+        
+        args = parser.parse_args()
+        
+        # Check for debug mode from environment variable as well
+        global DEBUG_MODE
+        DEBUG_MODE = args.debug or os.environ.get("WAKATERM_DEBUG", "").lower() in ("1", "true", "yes", "on")
+        
+        tracker = TerminalTracker(args.log_dir)
+        
+        # Handle cleanup if requested
+        if args.cleanup:
+            tracker.cleanup_old_logs(args.days_to_keep)
+            return
+        
+        if not args.command:
+            print("Usage: wakaterm.py <command>", file=sys.stderr)
+            sys.exit(1)
+        
+        command = ' '.join(args.command)
+        tracker.track_command(command, args.cwd, args.timestamp, args.duration, DEBUG_MODE)
+        
+    except KeyboardInterrupt:
+        if DEBUG_MODE:
+            print("WAKATERM DEBUG: Interrupted by user", file=sys.stderr)
         sys.exit(1)
-    
-    command = ' '.join(args.command)
-    tracker.track_command(command, args.cwd, args.timestamp, args.duration, DEBUG_MODE)
+    except Exception as e:
+        if DEBUG_MODE:
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"WakaTerm Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == '__main__':
