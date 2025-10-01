@@ -129,7 +129,7 @@ install_prebuilt_binary() {
         chmod +x "$bin_dir/wakaterm"
         track_file_creation "$bin_dir/wakaterm"
         success "wakaterm installed to $bin_dir/wakaterm"
-        ((installed_count++))
+        installed_count=$((installed_count + 1))
     fi
     
     if [[ -f "wakatermctl-$platform-$arch" ]]; then
@@ -138,7 +138,7 @@ install_prebuilt_binary() {
         chmod +x "$bin_dir/wakatermctl"
         track_file_creation "$bin_dir/wakatermctl"
         success "wakatermctl installed to $bin_dir/wakatermctl"
-        ((installed_count++))
+        installed_count=$((installed_count + 1))
     fi
     
     # Check for compiled modules directory
@@ -278,7 +278,7 @@ install_shell_files() {
             success "Installed $shell_file to $target"
         else
             error "Failed to download $shell_file from $url"
-            ((failed_downloads++))
+            failed_downloads=$((failed_downloads + 1))
         fi
     done
     
