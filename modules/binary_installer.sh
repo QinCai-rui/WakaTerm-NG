@@ -177,19 +177,44 @@ install_prebuilt_binary() {
         warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
     fi
     
-    # Create symlink for shell integration compatibility
-    log "Creating symlink for shell integration compatibility..."
+    # Create Python wrapper for shell integration compatibility
+    log "Creating Python wrapper for shell integration compatibility..."
     local share_dir="$HOME/.local/share/wakaterm"
     mkdir -p "$share_dir"
     
-    # Create symlink from expected Python path to binary
-    if [[ -L "$share_dir/wakaterm.py" || -e "$share_dir/wakaterm.py" ]]; then
+    # Create Python wrapper that calls the binary
+    local py_wrapper="$share_dir/wakaterm.py"
+    if [[ -f "$py_wrapper" ]]; then
         log "Removing existing wakaterm.py..."
-        rm -f "$share_dir/wakaterm.py"
+        rm -f "$py_wrapper"
     fi
     
-    ln -s "$bin_dir/wakaterm" "$share_dir/wakaterm.py"
-    success "Created symlink: $share_dir/wakaterm.py -> $bin_dir/wakaterm"
+    cat > "$py_wrapper" << 'EOF'
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+
+def main():
+    bin_path = os.path.expanduser("~/.local/bin/wakaterm")
+    if not os.path.isfile(bin_path):
+        print(f"Error: wakaterm binary not found at {bin_path}", file=sys.stderr)
+        sys.exit(1)
+    
+    args = sys.argv[1:]
+    try:
+        result = subprocess.run([bin_path] + args, check=False)
+        sys.exit(result.returncode)
+    except Exception as e:
+        print(f"Error running wakaterm binary: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+EOF
+    
+    chmod +x "$py_wrapper"
+    success "Created Python wrapper: $py_wrapper"
     
     # Install shell integration files
     log "Calling install_shell_files..."
