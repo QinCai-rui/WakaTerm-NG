@@ -18,6 +18,40 @@ from typing import Dict, List, Optional
 from collections import defaultdict, Counter
 
 
+class ProgressIndicator:
+    """Simple progress indicator for long-running operations"""
+    
+    def __init__(self, description: str = "Processing", enabled: bool = True):
+        self.description = description
+        self.enabled = enabled and sys.stdout.isatty()
+        self.last_update = 0
+        
+    def update(self, current: int, total: int):
+        """Update progress indicator"""
+        if not self.enabled:
+            return
+            
+        import time
+        current_time = time.time()
+        if current_time - self.last_update < 0.1:  # Update at most 10 times per second
+            return
+            
+        self.last_update = current_time
+        
+        if total > 0:
+            percentage = int((current / total) * 100)
+            bar_length = 20
+            filled = int((current / total) * bar_length)
+            bar = "█" * filled + "░" * (bar_length - filled)
+            
+            print(f"\r{self.description}: [{bar}] {percentage}% ({current}/{total})", end="", flush=True)
+    
+    def finish(self, message: str = "Complete"):
+        """Finish progress indicator"""
+        if self.enabled:
+            print(f"\r{message}{' ' * 50}")  # Clear the line
+
+
 class Colors:
     """ANSI color codes for terminal output"""
     RESET = '\033[0m'
@@ -41,6 +75,7 @@ class Colors:
     BRIGHT_BLUE = '\033[94m'
     BRIGHT_MAGENTA = '\033[95m'
     BRIGHT_CYAN = '\033[96m'
+    BRIGHT_WHITE = '\033[97m'
 
     @staticmethod
     def disable():
@@ -57,7 +92,7 @@ class LocalStatsReader:
         self.log_dir = Path(log_dir or os.path.expanduser('~/.local/share/wakaterm-logs'))
 
     def _apply_filters(self, entries: List[Dict], filters: Dict) -> List[Dict]:
-        """Apply filters to log entries"""
+        """Apply advanced filters to log entries"""
         filtered = entries
 
         if filters.get('project'):
@@ -77,23 +112,94 @@ class LocalStatsReader:
             min_time = filters['min_time']
             filtered = [e for e in filtered if e.get('duration', 2.0) >= min_time]
         
+        if filters.get('max_time'):
+            max_time = filters['max_time']
+            filtered = [e for e in filtered if e.get('duration', 2.0) <= max_time]
+        
+        if filters.get('start_date') or filters.get('end_date'):
+            from datetime import datetime
+            start_date = None
+            end_date = None
+            
+            if filters.get('start_date'):
+                try:
+                    start_date = datetime.strptime(filters['start_date'], '%Y-%m-%d')
+                except ValueError:
+                    pass
+            
+            if filters.get('end_date'):
+                try:
+                    end_date = datetime.strptime(filters['end_date'], '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+                except ValueError:
+                    pass
+            
+            if start_date or end_date:
+                filtered_entries = []
+                for e in filtered:
+                    entry_time = datetime.fromtimestamp(e['timestamp'])
+                    if start_date and entry_time < start_date:
+                        continue
+                    if end_date and entry_time > end_date:
+                        continue
+                    filtered_entries.append(e)
+                filtered = filtered_entries
+        
+        if filters.get('hour_range'):
+            hour_range = filters['hour_range']
+            try:
+                start_hour, end_hour = map(int, hour_range.split('-'))
+                filtered = [e for e in filtered if start_hour <= datetime.fromtimestamp(e['timestamp']).hour <= end_hour]
+            except (ValueError, TypeError):
+                pass
+        
+        if filters.get('weekday'):
+            weekday_map = {'mon': 0, 'tue': 1, 'wed': 2, 'thu': 3, 'fri': 4, 'sat': 5, 'sun': 6}
+            target_weekday = weekday_map.get(filters['weekday'].lower())
+            if target_weekday is not None:
+                filtered = [e for e in filtered if datetime.fromtimestamp(e['timestamp']).weekday() == target_weekday]
+        
+        if filters.get('command_type'):
+            cmd_type = filters['command_type']
+            type_mappings = {
+                'file-ops': ['File Operations', 'Archive'],
+                'text-proc': ['Text Processing'],
+                'version-ctrl': ['Git', 'Subversion', 'Mercurial'],
+                'build': ['Make', 'CMake', 'Ninja', 'Bazel'],
+                'deploy': ['Docker', 'Kubernetes', 'Terraform', 'Ansible'],
+                'admin': ['System Admin'],
+                'network': ['Network', 'SSH', 'HTTP'],
+                'package-mgr': ['Package Manager']
+            }
+            allowed_languages = type_mappings.get(cmd_type, [])
+            filtered = [e for e in filtered if e.get('language', '') in allowed_languages]
+        
+        if filters.get('exclude_project'):
+            exclude_project = filters['exclude_project'].lower()
+            filtered = [e for e in filtered if exclude_project not in e.get('project', '').lower()]
+
         return filtered
     
     def _read_log_files(self, start_date: datetime, end_date: datetime) -> List[Dict]:
-        """Read log entries from files within date range"""
+        """Read log entries from files within date range using streaming approach"""
         entries = []
         
         if not self.log_dir.exists():
             return entries
             
-        # list of dates to check
+        # List of dates to check
         current_date = start_date.date()
         end_date_only = end_date.date()
+        
+        # Calculate total days for progress indicator
+        total_days = (end_date_only - current_date).days + 1
+        progress = ProgressIndicator("Reading logs", enabled=total_days > 7)  # Only show for longer periods
+        day_count = 0
         
         while current_date <= end_date_only:
             log_file = self.log_dir / f"wakaterm-{current_date.strftime('%Y-%m-%d')}.jsonl"
             if log_file.exists():
                 try:
+                    # Use streaming approach to avoid loading entire file at once
                     with open(log_file, 'r', encoding='utf-8') as f:
                         for line in f:
                             line = line.strip()
@@ -107,8 +213,12 @@ class LocalStatsReader:
                                     continue
                 except Exception:
                     continue
+            
+            day_count += 1
+            progress.update(day_count, total_days)
             current_date += timedelta(days=1)
-                    
+        
+        progress.finish("Log reading complete")
         return entries
     
     def get_stats_for_period(self, period: str, filters: Optional[Dict] = None) -> Dict:
@@ -148,49 +258,46 @@ class LocalStatsReader:
         return self._calculate_stats(entries, period)
     
     def _calculate_stats(self, entries: List[Dict], period: str) -> Dict:
-        """Calculate statistics from log entries"""
+        """Calculate statistics from log entries using optimized data structures"""
         if not entries:
             return {"data": None}
         
-        # Count entries by various dimensions
+        # Use more efficient data structures
+        from collections import Counter, defaultdict
+        
+        # Pre-allocate counters for better performance
         language_counts = Counter()
         project_counts = Counter()
         command_counts = Counter()
-        daily_counts = defaultdict(int)
-        hourly_counts = defaultdict(int)
+        daily_counts = defaultdict(float)
+        hourly_counts = defaultdict(float)
         
         total_commands = len(entries)
-        total_seconds = sum(entry.get('duration', 2.0) for entry in entries)
+        total_seconds = 0.0
         
-        # Time tracking
-        timestamps = [entry['timestamp'] for entry in entries]
-        first_activity = datetime.fromtimestamp(min(timestamps)) if timestamps else None
-        last_activity = datetime.fromtimestamp(max(timestamps)) if timestamps else None
+        # Time tracking with single pass
+        timestamps = []
+        first_activity = None
+        last_activity = None
         
-        # Session tracking (gaps > 15 minutes indicate new session)
-        sessions = []
-        if timestamps:
-            sorted_times = sorted(timestamps)
-            session_start = sorted_times[0]
-            
-            for i in range(1, len(sorted_times)):
-                if sorted_times[i] - sorted_times[i-1] > 900:  # 15 minutes gap
-                    sessions.append((session_start, sorted_times[i-1]))
-                    session_start = sorted_times[i]
-            sessions.append((session_start, sorted_times[-1]))
-        
+        # Single pass through entries for efficiency
         for entry in entries:
+            duration = entry.get('duration', 2.0)
+            total_seconds += duration
+            
+            # Language, project, command counting
             language = entry.get('language', 'Unknown')
             project = entry.get('project', 'Unknown')
             base_command = entry.get('base_command', 'unknown')
-            timestamp = entry['timestamp']
-            duration = entry.get('duration', 2.0)
             
             language_counts[language] += duration
             project_counts[project] += duration
             command_counts[base_command] += 1
             
-            # Daily and hourly breakdown
+            # Time-based analysis
+            timestamp = entry['timestamp']
+            timestamps.append(timestamp)
+            
             entry_datetime = datetime.fromtimestamp(timestamp)
             entry_date = entry_datetime.date()
             entry_hour = entry_datetime.hour
@@ -198,35 +305,51 @@ class LocalStatsReader:
             daily_counts[entry_date] += duration
             hourly_counts[entry_hour] += duration
         
-        # Calculate various averages and metrics
+        # Calculate time bounds
+        if timestamps:
+            timestamps.sort()  # Only sort once
+            first_activity = datetime.fromtimestamp(timestamps[0])
+            last_activity = datetime.fromtimestamp(timestamps[-1])
+        
+        # Session tracking (gaps > 15 minutes indicate new session)
+        sessions = []
+        if timestamps:
+            session_start = timestamps[0]
+            
+            for i in range(1, len(timestamps)):
+                if timestamps[i] - timestamps[i-1] > 900:  # 15 minutes gap
+                    sessions.append((session_start, timestamps[i-1]))
+                    session_start = timestamps[i]
+            sessions.append((session_start, timestamps[-1]))
+        
+        # Calculate various metrics
         days_in_period = len(daily_counts) if daily_counts else 1
         daily_average = total_seconds / days_in_period if days_in_period > 0 else 0
         
-        # Find most productive hours and days
+        # Find most active hour and day
         most_active_hour = max(hourly_counts.items(), key=lambda x: x[1])[0] if hourly_counts else None
         most_active_day = max(daily_counts.items(), key=lambda x: x[1])[0] if daily_counts else None
         
-        # Calculate session stats
+        # Session stats
         session_durations = [(end - start) for start, end in sessions] if sessions else []
         avg_session_length = sum(session_durations) / len(session_durations) if session_durations else 0
         
-        # Productivity insights
-        productivity_score = min(100, (total_seconds / max(1, days_in_period)) / 36) if total_seconds > 0 else 0  # Based on 10h = 100%
-        
-        # Command efficiency (commands per minute)
+        # Productivity and efficiency metrics
+        productivity_score = min(100, (total_seconds / max(1, days_in_period)) / 36) if total_seconds > 0 else 0
         cmd_efficiency = (total_commands / (total_seconds / 60)) if total_seconds > 0 else 0
         
-        # Peak vs quiet hours analysis
+        # Peak/quiet hours analysis
         if hourly_counts:
-            peak_hours = [h for h, s in hourly_counts.items() if s >= max(hourly_counts.values()) * 0.7]
-            quiet_hours = [h for h, s in hourly_counts.items() if s <= max(hourly_counts.values()) * 0.3]
+            sorted_hours = sorted(hourly_counts.items(), key=lambda x: x[1], reverse=True)
+            peak_hours = [h for h, s in sorted_hours[:3] if s >= sorted_hours[0][1] * 0.7]
+            quiet_hours = [h for h, s in sorted_hours[-3:] if s <= sorted_hours[0][1] * 0.3]
         else:
             peak_hours, quiet_hours = [], []
         
-        # Language diversity (how many different languages used)
-        language_diversity = len([l for l in language_counts if language_counts[l] > 60])  # > 1 minute
+        # Language diversity
+        language_diversity = len([l for l in language_counts if language_counts[l] > 60])
         
-        # Streak analysis (consecutive active days)
+        # Streak analysis
         if daily_counts:
             sorted_days = sorted(daily_counts.keys())
             current_streak = 1
@@ -238,17 +361,30 @@ class LocalStatsReader:
         else:
             current_streak = 0
         
-        # Format top items with percentages
-        def format_top_items(counter, limit=10):
-            items = []
-            for name, seconds in counter.most_common(limit):
-                percentage = (seconds / total_seconds * 100) if total_seconds > 0 else 0
-                items.append({
-                    'name': name,
-                    'total_seconds': seconds,
-                    'percent': percentage
-                })
-            return items
+        # Optimized top items formatting
+        def format_top_items(counter, limit=10, is_duration=True):
+            if is_duration:
+                # For duration-based counters
+                items = []
+                for name, seconds in counter.most_common(limit):
+                    percentage = (seconds / total_seconds * 100) if total_seconds > 0 else 0
+                    items.append({
+                        'name': name,
+                        'total_seconds': seconds,
+                        'percent': percentage
+                    })
+                return items
+            else:
+                # For count-based counters
+                items = []
+                for name, count in counter.most_common(limit):
+                    percentage = count / total_commands * 100 if total_commands > 0 else 0
+                    items.append({
+                        'name': name,
+                        'count': count,
+                        'percent': percentage
+                    })
+                return items
         
         return {
             "data": {
@@ -267,12 +403,9 @@ class LocalStatsReader:
                 "quiet_hours": quiet_hours,
                 "language_diversity": language_diversity,
                 "current_streak": current_streak,
-                "languages": format_top_items(language_counts),
-                "projects": format_top_items(project_counts),
-                "commands": [
-                    {"name": cmd, "count": count, "percent": count/total_commands*100 if total_commands > 0 else 0}
-                    for cmd, count in command_counts.most_common(10)
-                ],
+                "languages": format_top_items(language_counts, is_duration=True),
+                "projects": format_top_items(project_counts, is_duration=True),
+                "commands": format_top_items(command_counts, limit=10, is_duration=False),
                 "daily_breakdown": {
                     str(date): seconds for date, seconds in daily_counts.items()
                 },
@@ -363,7 +496,7 @@ class StatsFormatter:
     
     @staticmethod
     def format_stats(stats_data: Dict, title: str, use_colors: bool = True) -> str:
-        """Format stats data for display with colors and enhanced information"""
+        """Format stats data for display with enhanced layout and readability"""
         if not use_colors:
             Colors.disable()
             
@@ -373,58 +506,81 @@ class StatsFormatter:
         data = stats_data['data']
         output = []
         
-        # Header
-        output.append(f"\n{Colors.BOLD}{Colors.BRIGHT_CYAN}{title}{Colors.RESET}")
-        output.append(f"{Colors.GRAY}{'─' * len(title)}{Colors.RESET}")
+        # Enhanced header with rounded corners and single layer
+        title_width = len(title) + 4  # Add padding
+        top_border = f"╭{'─' * (title_width - 2)}╮"
+        bottom_border = f"╰{'─' * (title_width - 2)}╯"
         
-        # Overview Section
-        output.append(f"\n{Colors.BOLD}{Colors.YELLOW}OVERVIEW{Colors.RESET}")
+        output.append(f"\n{Colors.BOLD}{Colors.BRIGHT_CYAN}{top_border}{Colors.RESET}")
+        output.append(f"{Colors.BOLD}{Colors.BRIGHT_CYAN}│{Colors.RESET}{Colors.BOLD}{Colors.BRIGHT_WHITE} {title} {Colors.RESET}{Colors.BOLD}{Colors.BRIGHT_CYAN}│{Colors.RESET}")
+        output.append(f"{Colors.BOLD}{Colors.BRIGHT_CYAN}{bottom_border}{Colors.RESET}\n")
         
-        if 'total_seconds' in data:
+        # Quick summary bar
+        if 'total_seconds' in data and 'total_commands' in data:
             total_time = StatsFormatter.format_time(data['total_seconds'])
             total_commands = data.get('total_commands', 0)
-            output.append(f"{Colors.GREEN}Total Time:{Colors.RESET} {Colors.BOLD}{total_time}{Colors.RESET}")
-            output.append(f"{Colors.GREEN}Commands Run:{Colors.RESET} {Colors.BOLD}{total_commands:,}{Colors.RESET}")
+            summary = f"Total: {total_time} • {total_commands:,} commands"
+            output.append(f"{Colors.DIM}┌─ {summary} {'─' * (55 - len(summary))}─┐{Colors.RESET}")
+        
+        # Overview Section with better organization
+        output.append(f"{Colors.BOLD}{Colors.YELLOW}📊 OVERVIEW{Colors.RESET}")
+        output.append(f"{Colors.DIM}{'─' * 20}{Colors.RESET}")
+        
+        overview_items = []
+        if 'total_seconds' in data:
+            overview_items.append(f"{Colors.GREEN}Total Time:{Colors.RESET} {Colors.BOLD}{StatsFormatter.format_time(data['total_seconds'])}{Colors.RESET}")
+        
+        if 'total_commands' in data:
+            overview_items.append(f"{Colors.GREEN}Commands:{Colors.RESET} {Colors.BOLD}{data['total_commands']:,}{Colors.RESET}")
         
         if 'daily_average' in data and data['daily_average']:
-            avg_time = StatsFormatter.format_time(data['daily_average'])
-            output.append(f"{Colors.GREEN}Daily Average:{Colors.RESET} {Colors.BOLD}{avg_time}{Colors.RESET}")
+            overview_items.append(f"{Colors.GREEN}Daily Avg:{Colors.RESET} {Colors.BOLD}{StatsFormatter.format_time(data['daily_average'])}{Colors.RESET}")
         
-        # Session Information
         if 'session_count' in data and data['session_count']:
-            session_count = data['session_count']
-            avg_session = StatsFormatter.format_time(data.get('avg_session_length', 0))
-            output.append(f"{Colors.GREEN}Sessions:{Colors.RESET} {Colors.BOLD}{session_count}{Colors.RESET}")
-            output.append(f"{Colors.GREEN}Avg Session Length:{Colors.RESET} {Colors.BOLD}{avg_session}{Colors.RESET}")
+            overview_items.append(f"{Colors.GREEN}Sessions:{Colors.RESET} {Colors.BOLD}{data['session_count']}{Colors.RESET}")
+        
+        # Format overview in two columns for better space usage
+        for i in range(0, len(overview_items), 2):
+            left = overview_items[i]
+            right = overview_items[i+1] if i+1 < len(overview_items) else ""
+            if right:
+                output.append(f"{left:<35} {right}")
+            else:
+                output.append(left)
         
         # Activity Period
         if data.get('first_activity') and data.get('last_activity'):
             try:
                 first = datetime.fromisoformat(data['first_activity']).strftime('%Y-%m-%d %H:%M')
                 last = datetime.fromisoformat(data['last_activity']).strftime('%Y-%m-%d %H:%M')
-                output.append(f"{Colors.GREEN}Active Period:{Colors.RESET} {Colors.DIM}{first} → {last}{Colors.RESET}")
+                output.append(f"{Colors.GREEN}Period:{Colors.RESET} {Colors.DIM}{first} → {last}{Colors.RESET}")
             except Exception as e:
                 pass
+        
+        output.append("")  # Spacing
         
         # Peak Activity & Insights
         if data.get('most_active_hour') is not None:
             peak_hour = StatsFormatter.format_hour_display(data['most_active_hour'])
             output.append(f"{Colors.GREEN}Most Active Hour:{Colors.RESET} {Colors.BOLD}{peak_hour}{Colors.RESET}")
         
-        # Productivity Insights Section
+        # Productivity Insights Section with better layout
         if 'productivity_score' in data:
-            output.append(f"\n{Colors.BOLD}{Colors.YELLOW}PRODUCTIVITY INSIGHTS{Colors.RESET}")
+            output.append(f"{Colors.BOLD}{Colors.YELLOW}🚀 PRODUCTIVITY INSIGHTS{Colors.RESET}")
+            output.append(f"{Colors.DIM}{'─' * 25}{Colors.RESET}")
             
-            # Productivity Score
+            # Productivity Score with visual indicator
             score = data.get('productivity_score', 0)
             emoji = StatsFormatter.get_productivity_emoji(score) if use_colors else ""
             score_color = Colors.BRIGHT_GREEN if score >= 70 else Colors.YELLOW if score >= 40 else Colors.RED
-            output.append(f"{Colors.GREEN}Productivity Score:{Colors.RESET} {score_color}{emoji} {score:.1f}/100{Colors.RESET}")
+            
+            score_bar = StatsFormatter.format_percentage_bar(score, 15)
+            output.append(f"{Colors.GREEN}Score:{Colors.RESET} {score_color}{emoji} {score:.1f}/100{Colors.RESET} {score_bar}")
             
             # Command Efficiency
             if 'cmd_efficiency' in data and data['cmd_efficiency'] > 0:
                 efficiency = data['cmd_efficiency']
-                output.append(f"{Colors.GREEN}Commands per Minute:{Colors.RESET} {Colors.BOLD}{efficiency:.1f}{Colors.RESET}")
+                output.append(f"{Colors.GREEN}Commands/min:{Colors.RESET} {Colors.BOLD}{efficiency:.1f}{Colors.RESET}")
             
             # Current Streak
             if data.get('current_streak', 0) > 0:
@@ -432,12 +588,12 @@ class StatsFormatter:
                 streak_emoji = "🔥" if streak >= 7 else "⭐" if streak >= 3 else "✨"
                 if not use_colors:
                     streak_emoji = ""
-                output.append(f"{Colors.GREEN}Active Days Streak:{Colors.RESET} {Colors.BOLD}{streak_emoji} {streak} days{Colors.RESET}")
+                output.append(f"{Colors.GREEN}Active Streak:{Colors.RESET} {Colors.BOLD}{streak_emoji} {streak} days{Colors.RESET}")
             
             # Language Diversity
             if data.get('language_diversity', 0) > 1:
                 diversity = data['language_diversity']
-                output.append(f"{Colors.GREEN}Technologies Used:{Colors.RESET} {Colors.BOLD}{diversity} different{Colors.RESET}")
+                output.append(f"{Colors.GREEN}Technologies:{Colors.RESET} {Colors.BOLD}{diversity} different{Colors.RESET}")
             
             # Peak/Quiet Hours Analysis
             peak_hours = data.get('peak_hours', [])
@@ -445,52 +601,64 @@ class StatsFormatter:
                 formatted_peaks = [StatsFormatter.format_hour_display(h).split()[0] for h in sorted(peak_hours)[:3]]
                 output.append(f"{Colors.GREEN}Peak Hours:{Colors.RESET} {Colors.DIM}{', '.join(formatted_peaks)}{Colors.RESET}")
         
-        # Languages/Categories Section
+        output.append("")  # Spacing
+        
+        # Languages/Categories Section with improved layout
         if 'languages' in data and data['languages']:
-            output.append(f"\n{Colors.BOLD}{Colors.YELLOW}LANGUAGES & TECHNOLOGIES{Colors.RESET}")
+            output.append(f"{Colors.BOLD}{Colors.YELLOW}💻 LANGUAGES & TECHNOLOGIES{Colors.RESET}")
+            output.append(f"{Colors.DIM}{'─' * 28}{Colors.RESET}")
+            
             for i, lang in enumerate(data['languages'][:10], 1):
                 name = lang.get('name', 'Unknown')
                 percent = lang.get('percent', 0)
                 time_str = StatsFormatter.format_time(lang.get('total_seconds', 0))
-                bar = StatsFormatter.format_percentage_bar(percent, 15)
+                bar = StatsFormatter.format_percentage_bar(percent, 12)
                 
                 # Color coding based on rank
                 if i == 1:
                     color = Colors.BRIGHT_GREEN
-                elif i <= 3:
+                    rank_icon = "🥇"
+                elif i == 2:
                     color = Colors.BRIGHT_BLUE
+                    rank_icon = "🥈"
+                elif i == 3:
+                    color = Colors.YELLOW
+                    rank_icon = "🥉"
                 else:
                     color = Colors.WHITE
+                    rank_icon = f"{i:2d}"
                 
                 # Ensure consistent width for language names
-                display_name = name[:18] + "..." if len(name) > 21 else name
+                display_name = name[:16] + "..." if len(name) > 19 else name
                     
-                output.append(f"{color}{i:2d}. {display_name:<21}{Colors.RESET} {bar} {Colors.BOLD}{time_str:>8}{Colors.RESET} {Colors.DIM}({percent:5.1f}%){Colors.RESET}")
+                output.append(f"{color}{rank_icon}. {display_name:<19}{Colors.RESET} {bar} {Colors.BOLD}{time_str:>8}{Colors.RESET} {Colors.DIM}({percent:5.1f}%){Colors.RESET}")
         
-        # Commands Section
+        # Commands Section with better formatting
         if 'commands' in data and data['commands']:
-            output.append(f"\n{Colors.BOLD}{Colors.YELLOW}TOP COMMANDS{Colors.RESET}")
+            output.append(f"\n{Colors.BOLD}{Colors.YELLOW}⌨️  TOP COMMANDS{Colors.RESET}")
+            output.append(f"{Colors.DIM}{'─' * 15}{Colors.RESET}")
+            
             for i, cmd in enumerate(data['commands'][:10], 1):
                 name = cmd.get('name', 'unknown')
                 count = cmd.get('count', 0)
                 percent = cmd.get('percent', 0)
-                bar = StatsFormatter.format_percentage_bar(percent, 15)
+                bar = StatsFormatter.format_percentage_bar(percent, 12)
                 
-                if i == 1:
-                    color = Colors.BRIGHT_GREEN
-                elif i <= 3:
-                    color = Colors.BRIGHT_BLUE
+                if i <= 3:
+                    color = Colors.BRIGHT_GREEN if i == 1 else Colors.BRIGHT_BLUE if i == 2 else Colors.YELLOW
                 else:
                     color = Colors.WHITE
                 
-                # Truncate very long command names and ensure consistent width
-                display_name = name[:18] + "..." if len(name) > 21 else name
+                # Truncate very long command names
+                display_name = name[:16] + "..." if len(name) > 19 else name
                     
-                output.append(f"{color}{i:2d}. {display_name:<21}{Colors.RESET} {bar} {Colors.BOLD}{count:>4}{Colors.RESET} times {Colors.DIM}({percent:4.1f}%){Colors.RESET}")
+                output.append(f"{color}{i:2d}. {display_name:<19}{Colors.RESET} {bar} {Colors.BOLD}{count:>4}{Colors.RESET} times {Colors.DIM}({percent:4.1f}%){Colors.RESET}")
         
         # Projects Section
         if 'projects' in data and data['projects'] and len(data['projects']) > 1:
-            output.append(f"\n{Colors.BOLD}{Colors.YELLOW}PROJECTS{Colors.RESET}")
+            output.append(f"\n{Colors.BOLD}{Colors.YELLOW}📁 PROJECTS{Colors.RESET}")
+            output.append(f"{Colors.DIM}{'─' * 10}{Colors.RESET}")
+            
             for i, project in enumerate(data['projects'][:6], 1):
                 name = project.get('name', 'Unknown')
                 if name == 'Unknown':
@@ -498,24 +666,25 @@ class StatsFormatter:
                     
                 percent = project.get('percent', 0)
                 time_str = StatsFormatter.format_time(project.get('total_seconds', 0))
-                bar = StatsFormatter.format_percentage_bar(percent, 15)
+                bar = StatsFormatter.format_percentage_bar(percent, 12)
                 
-                if i == 1:
-                    color = Colors.BRIGHT_GREEN
-                elif i <= 3:
-                    color = Colors.BRIGHT_BLUE
+                if i <= 3:
+                    color = Colors.BRIGHT_GREEN if i == 1 else Colors.BRIGHT_BLUE if i == 2 else Colors.YELLOW
                 else:
                     color = Colors.WHITE
                     
-                # Truncate long project names with consistent width
-                display_name = name[:18] + "..." if len(name) > 21 else name
-                output.append(f"{color}{i:2d}. {display_name:<21}{Colors.RESET} {bar} {Colors.BOLD}{time_str:>8}{Colors.RESET} {Colors.DIM}({percent:5.1f}%){Colors.RESET}")
+                # Truncate long project names
+                display_name = name[:16] + "..." if len(name) > 19 else name
+                output.append(f"{color}{i:2d}. {display_name:<19}{Colors.RESET} {bar} {Colors.BOLD}{time_str:>8}{Colors.RESET} {Colors.DIM}({percent:5.1f}%){Colors.RESET}")
         
-        # Activity Timeline (last 7 days if available)
+        output.append("")  # Final spacing
+        
+        # Activity Timeline (last 7 days if available) with improved layout
         if 'daily_breakdown' in data and data['daily_breakdown']:
             daily_data = data['daily_breakdown']
             if len(daily_data) > 1:
-                output.append(f"\n{Colors.BOLD}{Colors.YELLOW}ACTIVITY TIMELINE{Colors.RESET}")
+                output.append(f"{Colors.BOLD}{Colors.YELLOW}📈 ACTIVITY TIMELINE{Colors.RESET}")
+                output.append(f"{Colors.DIM}{'─' * 20}{Colors.RESET}")
                 
                 # Hourly sparkline for today/recent period
                 if 'hourly_breakdown' in data and data['hourly_breakdown']:
@@ -524,7 +693,8 @@ class StatsFormatter:
                     hourly_values = [hourly_data.get(h, 0) for h in range(24)]
                     sparkline = StatsFormatter.create_sparkline(hourly_values, 24)
                     output.append(f"{Colors.DIM}24h Pattern: {Colors.CYAN}{sparkline}{Colors.RESET}")
-                    output.append(f"{Colors.DIM}             12a    6a    12p    6p    12a{Colors.RESET}\n")
+                    output.append(f"{Colors.DIM}             12a    6a    12p    6p    12a{Colors.RESET}")
+                    output.append("")
                 
                 # Sort by date and take last 7 days
                 sorted_days = sorted(daily_data.items())[-7:]
@@ -538,8 +708,8 @@ class StatsFormatter:
                         
                         time_str = StatsFormatter.format_time(seconds)
                         percent_of_max = (seconds / max_seconds) * 100
-                        bar_length = int(percent_of_max / 100 * 20)
-                        bar = "█" * bar_length + "░" * (20 - bar_length)
+                        bar_length = int(percent_of_max / 100 * 15)
+                        bar = "█" * bar_length + "░" * (15 - bar_length)
                         
                         # Smart color coding based on activity level
                         if seconds == max_seconds:
@@ -562,9 +732,57 @@ class StatsFormatter:
                         daily_productivity = min(100, (seconds / 36) * 10) if seconds > 0 else 0
                         productivity_display = f"{daily_productivity:3.0f}%" if seconds > 0 else "  0%"
                         
-                        output.append(f"{day_indicator} {day_name} {date_display}  {bar_color}{bar}{Colors.RESET} {Colors.BOLD}{time_str:>8}{Colors.RESET} {Colors.DIM}({productivity_display}){Colors.RESET}")
+                        output.append(f"{day_indicator} {Colors.BOLD}{day_name} {date_display}{Colors.RESET}  {bar_color}{bar}{Colors.RESET} {Colors.BOLD}{time_str:>8}{Colors.RESET} {Colors.DIM}({productivity_display}){Colors.RESET}")
                     except:
                         continue
+        
+        # Footer
+        output.append(f"{Colors.DIM}{'─' * 60}{Colors.RESET}")
+        return "\n".join(output) + "\n"
+    
+    @staticmethod
+    def format_summary(stats_data: Dict, title: str, use_colors: bool = True) -> str:
+        """Format a concise summary of stats data"""
+        if not use_colors:
+            Colors.disable()
+            
+        if not stats_data or 'data' not in stats_data or not stats_data['data']:
+            return f"\n{Colors.RED}No terminal activity recorded{Colors.RESET}\n"
+        
+        data = stats_data['data']
+        output = []
+        
+        # Compact header
+        output.append(f"{Colors.BOLD}{Colors.BRIGHT_CYAN}{title}{Colors.RESET}")
+        output.append(f"{Colors.DIM}{'─' * len(title)}{Colors.RESET}")
+        
+        # Key metrics in a compact format
+        metrics = []
+        if 'total_seconds' in data:
+            metrics.append(f"Time: {StatsFormatter.format_time(data['total_seconds'])}")
+        if 'total_commands' in data:
+            metrics.append(f"Commands: {data['total_commands']:,}")
+        if 'daily_average' in data and data['daily_average']:
+            metrics.append(f"Daily Avg: {StatsFormatter.format_time(data['daily_average'])}")
+        if 'productivity_score' in data:
+            score = data['productivity_score']
+            emoji = StatsFormatter.get_productivity_emoji(score) if use_colors else ""
+            metrics.append(f"Score: {emoji}{score:.0f}%")
+        
+        output.append(" • ".join(metrics))
+        
+        # Top items summary
+        if 'languages' in data and data['languages']:
+            top_lang = data['languages'][0]
+            output.append(f"Top Language: {top_lang['name']} ({StatsFormatter.format_time(top_lang['total_seconds'])})")
+        
+        if 'projects' in data and data['projects'] and len(data['projects']) > 1:
+            top_proj = data['projects'][0]
+            output.append(f"Top Project: {top_proj['name']} ({StatsFormatter.format_time(top_proj['total_seconds'])})")
+        
+        if 'commands' in data and data['commands']:
+            top_cmd = data['commands'][0]
+            output.append(f"Top Command: {top_cmd['name']} ({top_cmd['count']} times)")
         
         return "\n".join(output) + "\n"
     
@@ -811,19 +1029,24 @@ def main():
         epilog="""
 Examples:
   # Stats commands
-  wakatermctl stats              # Show today's stats
-  wakatermctl stats yesterday    # Show yesterday's stats  
-  wakatermctl stats last_7_days  # Show last week's stats
-  wakatermctl stats --no-color   # Show stats without colors
-  wakatermctl stats --json       # Output raw JSON data
+  wakatermctl stats                           # Show today's stats
+  wakatermctl stats yesterday                 # Show yesterday's stats  
+  wakatermctl stats last_7_days               # Show last week's stats
+  wakatermctl stats --no-color                # Show stats without colors
+  wakatermctl stats --json                    # Output raw JSON data
+  wakatermctl stats --project "myproject"     # Filter by project
+  wakatermctl stats --command "git*"          # Filter by command pattern
+  wakatermctl stats --start-date 2024-01-01   # Filter by date range
+  wakatermctl stats --command-type build      # Filter by command category
+  wakatermctl stats --export csv              # Export data as CSV
   
   # Ignore pattern management  
-  wakatermctl ignore add "git status"    # Add pattern to ignore
-  wakatermctl ignore add "debug_*"       # Add wildcard pattern
-  wakatermctl ignore remove "ls"         # Remove pattern
-  wakatermctl ignore list                # List all patterns
-  wakatermctl ignore test "git status"   # Test if command would be ignored
-  wakatermctl ignore edit               # Open ignore file in editor
+  wakatermctl ignore add "git status"         # Add pattern to ignore
+  wakatermctl ignore add "debug_*"            # Add wildcard pattern
+  wakatermctl ignore remove "ls"              # Remove pattern
+  wakatermctl ignore list                     # List all patterns
+  wakatermctl ignore test "git status"        # Test if command would be ignored
+  wakatermctl ignore edit                    # Open ignore file in editor
         """
     )
     
@@ -895,6 +1118,44 @@ Examples:
         "--min-time",
         type=int,
         help="Minimum seconds to include in analysis (default: 2)"
+    )
+    
+    stats_parser.add_argument(
+        "--max-time",
+        type=int,
+        help="Maximum seconds to include in analysis"
+    )
+    
+    stats_parser.add_argument(
+        "--start-date",
+        help="Start date for analysis (YYYY-MM-DD format)"
+    )
+    
+    stats_parser.add_argument(
+        "--end-date",
+        help="End date for analysis (YYYY-MM-DD format)"
+    )
+    
+    stats_parser.add_argument(
+        "--hour-range",
+        help="Filter by hour range (e.g., '9-17' for 9 AM to 5 PM)"
+    )
+    
+    stats_parser.add_argument(
+        "--weekday",
+        choices=['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+        help="Filter by specific weekday"
+    )
+    
+    stats_parser.add_argument(
+        "--command-type",
+        choices=['file-ops', 'text-proc', 'version-ctrl', 'build', 'deploy', 'admin', 'network', 'package-mgr'],
+        help="Filter by command category"
+    )
+    
+    stats_parser.add_argument(
+        "--exclude-project",
+        help="Exclude specific project from analysis"
     )
     
     stats_parser.add_argument(
@@ -996,14 +1257,28 @@ Examples:
         
         # Prepare filters
         filters = {}
-        if args.project:
+        if getattr(args, 'project', None):
             filters['project'] = args.project
-        if args.language:
+        if getattr(args, 'language', None):
             filters['language'] = args.language
-        if args.command:
+        if getattr(args, 'command', None):
             filters['command'] = args.command
-        if args.min_time:
+        if getattr(args, 'min_time', None):
             filters['min_time'] = args.min_time
+        if getattr(args, 'max_time', None):
+            filters['max_time'] = args.max_time
+        if getattr(args, 'start_date', None):
+            filters['start_date'] = args.start_date
+        if getattr(args, 'end_date', None):
+            filters['end_date'] = args.end_date
+        if getattr(args, 'hour_range', None):
+            filters['hour_range'] = args.hour_range
+        if getattr(args, 'weekday', None):
+            filters['weekday'] = args.weekday
+        if getattr(args, 'command_type', None):
+            filters['command_type'] = args.command_type
+        if getattr(args, 'exclude_project', None):
+            filters['exclude_project'] = args.exclude_project
         
         # Get statistics
         stats = reader.get_stats_for_period(args.period, filters if filters else None)
@@ -1039,18 +1314,58 @@ Examples:
         
     except KeyboardInterrupt:
         if use_colors:
-            print(f"\n{Colors.CYAN}Goodbye!{Colors.RESET}")
+            print(f"\n{Colors.CYAN}👋 Goodbye!{Colors.RESET}")
         else:
             print("\nGoodbye!")
         sys.exit(0)
+    except FileNotFoundError as e:
+        error_msg = f"Log directory not found: {e.filename if hasattr(e, 'filename') else 'unknown'}"
+        if use_colors:
+            print(f"{Colors.RED}❌ {error_msg}{Colors.RESET}", file=sys.stderr)
+            print(f"{Colors.YELLOW}💡 Try running some commands first to generate log data, or check --log-dir path{Colors.RESET}", file=sys.stderr)
+        else:
+            print(f"Error: {error_msg}", file=sys.stderr)
+            print("Try running some commands first to generate log data, or check --log-dir path", file=sys.stderr)
+        sys.exit(1)
+    except PermissionError as e:
+        error_msg = f"Permission denied accessing log files: {e.filename if hasattr(e, 'filename') else 'log directory'}"
+        if use_colors:
+            print(f"{Colors.RED}❌ {error_msg}{Colors.RESET}", file=sys.stderr)
+            print(f"{Colors.YELLOW}💡 Check file permissions or run with appropriate privileges{Colors.RESET}", file=sys.stderr)
+        else:
+            print(f"Error: {error_msg}", file=sys.stderr)
+            print("Check file permissions or run with appropriate privileges", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        error_msg = f"Corrupted log file detected: {e}"
+        if use_colors:
+            print(f"{Colors.RED}❌ {error_msg}{Colors.RESET}", file=sys.stderr)
+            print(f"{Colors.YELLOW}💡 Try cleaning up old logs with --cleanup or check log file integrity{Colors.RESET}", file=sys.stderr)
+        else:
+            print(f"Error: {error_msg}", file=sys.stderr)
+            print("Try cleaning up old logs with --cleanup or check log file integrity", file=sys.stderr)
+        sys.exit(1)
+    except ValueError as e:
+        error_msg = f"Invalid input: {e}"
+        if use_colors:
+            print(f"{Colors.RED}❌ {error_msg}{Colors.RESET}", file=sys.stderr)
+            print(f"{Colors.YELLOW}💡 Check your command arguments and try again{Colors.RESET}", file=sys.stderr)
+        else:
+            print(f"Error: {error_msg}", file=sys.stderr)
+            print("Check your command arguments and try again", file=sys.stderr)
+        sys.exit(1)
     except Exception as e:
         if getattr(args, 'debug', False):
             import traceback
             traceback.print_exc()
         else:
-            error_color = Colors.RED if use_colors else ""
-            reset_color = Colors.RESET if use_colors else ""
-            print(f"{error_color}Error: {e}{reset_color}", file=sys.stderr)
+            error_msg = f"An unexpected error occurred: {e}"
+            if use_colors:
+                print(f"{Colors.RED}❌ {error_msg}{Colors.RESET}", file=sys.stderr)
+                print(f"{Colors.YELLOW}💡 Run with --debug for more details{Colors.RESET}", file=sys.stderr)
+            else:
+                print(f"Error: {error_msg}", file=sys.stderr)
+                print("Run with --debug for more details", file=sys.stderr)
         sys.exit(1)
 
 
