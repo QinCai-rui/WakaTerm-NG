@@ -520,7 +520,7 @@ class StatsFormatter:
             total_time = StatsFormatter.format_time(data['total_seconds'])
             total_commands = data.get('total_commands', 0)
             summary = f"Total: {total_time} • {total_commands:,} commands"
-            output.append(f"{Colors.DIM}┌─ {summary} {'─' * (55 - len(summary))}─┐{Colors.RESET}")
+            output.append(f"{Colors.DIM}┌─ {summary} {'─' * (max(0, 55 - len(summary)))}─┐{Colors.RESET}")
         
         # Overview Section with better organization
         output.append(f"{Colors.BOLD}{Colors.YELLOW}📊 OVERVIEW{Colors.RESET}")
